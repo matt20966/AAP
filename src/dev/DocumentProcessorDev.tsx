@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
-import { useReserveProcessor, ReserveResult } from './ReserveProcessor';
+import { useReserveProcessor } from '../ReserveProcessor';
+import type { ReserveResult } from '../ReserveProcessor';
 
 // ─── PDF.js Worker Setup ─────────────────────────────────────────────────────
 
@@ -141,6 +142,7 @@ interface DocEntry {
   results: ExtractionResult[];
   error: string | null;
   expanded: boolean;
+  usedReserve?: boolean;  // ← ADD THIS
 }
 
 // ─── Design Tokens ───────────────────────────────────────────────────────────
@@ -829,18 +831,33 @@ const DocResultCard = memo(function DocResultCard({
         )}
 
         {/* Confidence summary badge */}
-        {doc.status === 'done' && doc.results.length > 0 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-            padding: '4px 10px', borderRadius: 8,
-            background: confBg(avgConf), border: `1px solid ${confBorder(avgConf)}`,
-          }}>
-            <div style={{ width: 32, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-              <div style={{ width: `${avgConf}%`, height: '100%', borderRadius: 2, background: confColor(avgConf) }} />
-            </div>
-            <span style={{ fontSize: 10, fontWeight: 700, color: confColor(avgConf) }}>{avgConf}%</span>
-          </div>
-        )}
+{doc.status === 'done' && doc.results.length > 0 && (
+  <div style={{
+    display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+    padding: '4px 10px', borderRadius: 8,
+    background: confBg(avgConf), border: `1px solid ${confBorder(avgConf)}`,
+  }}>
+    <div style={{ width: 32, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+      <div style={{ width: `${avgConf}%`, height: '100%', borderRadius: 2, background: confColor(avgConf) }} />
+    </div>
+    <span style={{ fontSize: 10, fontWeight: 700, color: confColor(avgConf) }}>{avgConf}%</span>
+  </div>
+)}
+
+{/* ← ADD THIS: Reserve tag */}
+{doc.status === 'done' && doc.usedReserve && (
+  <div style={{
+    display: 'flex', alignItems: 'center', gap: 4,
+    padding: '4px 8px', borderRadius: 6,
+    background: T.accent.amberBg,
+    border: `1px solid ${T.accent.amberBorder}`,
+  }}>
+    <Icons.zap style={{ width: 10, height: 10, color: T.accent.amber }} />
+    <span style={{ fontSize: 9, fontWeight: 700, color: T.accent.amber, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+      Reserve
+    </span>
+  </div>
+)}
 
         {/* Expand chevron */}
         {doc.status === 'done' && (
@@ -853,8 +870,7 @@ const DocResultCard = memo(function DocResultCard({
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-          {/* Eye Icon for Preview */}
-           <motion.button whileTap={{ scale: 0.9 }} onClick={(e) => { e.stopPropagation(); onPreview(doc); }}
+          <motion.button whileTap={{ scale: 0.9 }} onClick={(e) => { e.stopPropagation(); onPreview(doc); }}
             style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(255,255,255,0.03)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.accent.cyan }}>
             <Icons.eye style={{ width: 14, height: 14 }} />
           </motion.button>
@@ -928,12 +944,10 @@ const DocResultCard = memo(function DocResultCard({
                     border: `1px solid ${T.border.subtle}`,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      {/* Label */}
                       <span style={{ fontSize: 11, fontWeight: 600, color: T.text.tertiary, minWidth: 90 }}>
                         {r.targetLabel}
                       </span>
 
-                      {/* Value */}
                       <div style={{ flex: 1, minWidth: 80 }}>
                         {isEditing ? (
                           <div style={{ display: 'flex', gap: 4 }}>
@@ -981,7 +995,6 @@ const DocResultCard = memo(function DocResultCard({
                         )}
                       </div>
 
-                      {/* Confidence bar */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                         <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.05)', overflow: 'hidden' }}>
                           <div style={{ width: `${r.confidence}%`, height: '100%', borderRadius: 2, background: confColor(r.confidence), transition: 'width 0.5s' }} />
@@ -992,7 +1005,6 @@ const DocResultCard = memo(function DocResultCard({
                       </div>
                     </div>
 
-                    {/* Evidence */}
                     {r.evidence && (
                       <div style={{
                         marginTop: 6, padding: '5px 8px', borderRadius: 6,
@@ -1007,7 +1019,6 @@ const DocResultCard = memo(function DocResultCard({
                       </div>
                     )}
 
-                    {/* Debug reason */}
                     {debugMode && r.reason && (
                       <div style={{
                         marginTop: 4, padding: '5px 8px', borderRadius: 6,
@@ -1020,7 +1031,6 @@ const DocResultCard = memo(function DocResultCard({
                       </div>
                     )}
 
-                    {/* Alternatives */}
                     {r.alternatives.length > 0 && (
                       <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                         {r.alternatives.map((alt, ai) => (
@@ -1065,8 +1075,6 @@ function DocumentProcessorDev() {
   const [docs, setDocs] = useState<DocEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // New state for Preview Modal
   const [previewDoc, setPreviewDoc] = useState<DocEntry | null>(null);
 
   const [targets, setTargets] = useState<ExtractionTarget[]>(loadTargets);
@@ -1084,47 +1092,9 @@ function DocumentProcessorDev() {
   useEffect(() => { saveTargets(targets); }, [targets]);
   useEffect(() => { saveCorrections(corrections); }, [corrections]);
 
-  // ─── Reserve Processor ─────────────────────────────────────────────
-const reserve = useReserveProcessor(
-  useCallback((docId: string, results: ReserveResult[]) => {
-    // Merge improved reserve results back into the doc's results
-    setDocs(prev => prev.map(doc => {
-      if (doc.id !== docId) return doc;
-      const mergedResults = doc.results.map(original => {
-        const reserveResult = results.find(r => r.targetId === original.targetId);
-        if (!reserveResult || !reserveResult.improved) return original;
-        // Replace with the improved result
-        return {
-          ...original,
-          value: reserveResult.value,
-          confidence: reserveResult.confidence,
-          evidence: reserveResult.evidence,
-          reason: `[Reserve: ${reserveResult.technique}] ${reserveResult.reason}`,
-          alternatives: [
-            // Keep original as first alternative
-            {
-              value: original.value,
-              rawValue: original.value,
-              score: original.confidence,
-              confidence: original.confidence,
-              evidence: original.evidence,
-              reason: `[Original] ${original.reason}`,
-              position: original.position,
-            },
-            ...reserveResult.alternatives,
-          ].slice(0, 5),
-          position: reserveResult.position,
-        };
-      });
-      return { ...doc, results: mergedResults };
-    }));
-    addToast(
-      `Reserve improved ${results.filter(r => r.improved).length} value(s)`,
-      'success'
-    );
-  }, [addToast])
-);
+  
 
+  // ─── Toast (defined BEFORE reserve so it can be referenced) ────────
   const addToast = useCallback((message: string, type: ToastItem['type'] = 'success') => {
     const id = uid();
     setToasts(prev => [...prev, { id, message, type }]);
@@ -1132,6 +1102,49 @@ const reserve = useReserveProcessor(
   }, []);
   const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), []);
 
+  // ─── Reserve Processor (uses ref-based callback to avoid stale closures) ──
+  const addToastRef = useRef(addToast);
+  addToastRef.current = addToast;
+
+ const handleReserveComplete = useCallback((docId: string, results: ReserveResult[]) => {
+  const improvedCount = results.filter(r => r.improved).length;
+  if (improvedCount === 0) return;
+
+  setDocs(prev => prev.map(doc => {
+    if (doc.id !== docId) return doc;
+    const mergedResults = doc.results.map(original => {
+      const reserveResult = results.find(r => r.targetId === original.targetId);
+      if (!reserveResult || !reserveResult.improved) return original;
+      return {
+        ...original,
+        value: reserveResult.value,
+        confidence: reserveResult.confidence,
+        evidence: reserveResult.evidence,
+        reason: `[Reserve: ${reserveResult.technique}] ${reserveResult.reason}`,
+        alternatives: [
+          {
+            value: original.value,
+            rawValue: original.value,
+            score: original.confidence,
+            confidence: original.confidence,
+            evidence: original.evidence,
+            reason: `[Original] ${original.reason}`,
+            position: original.position,
+          },
+          ...reserveResult.alternatives,
+        ].slice(0, 5),
+        position: reserveResult.position,
+      };
+    });
+    return { ...doc, results: mergedResults, usedReserve: true };  // ← ADD usedReserve: true
+  }));
+
+  addToastRef.current(`Reserve improved ${improvedCount} value(s)`, 'success');
+}, []);
+
+  const reserve = useReserveProcessor(handleReserveComplete);
+
+  // ─── Document Processing ───────────────────────────────────────────
   const processDoc = useCallback(async (docId: string) => {
     let fileToProcess: File | null = null;
     
@@ -1140,7 +1153,7 @@ const reserve = useReserveProcessor(
       if (doc) {
         fileToProcess = doc.file;
         return prev.map(d => d.id === docId ? { 
-          ...d, status: 'parsing', progress: 0, progressMsg: 'Starting...' 
+          ...d, status: 'parsing' as DocStatus, progress: 0, progressMsg: 'Starting...' 
         } : d);
       }
       return prev;
@@ -1166,32 +1179,32 @@ const reserve = useReserveProcessor(
         saveTextCache(textCacheRef.current);
       }
 
-      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'extracting', progress: 95, progressMsg: 'Extracting...' } : d));
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'extracting' as DocStatus, progress: 95, progressMsg: 'Extracting...' } : d));
       const results = extractValues(text, targets, corrections, debugMode);
 
       setDocs(prev => prev.map(d => d.id === docId ? {
-  ...d, status: 'done', progress: 100, progressMsg: 'Done', results, text, expanded: false,
-} : d));
+        ...d, status: 'done' as DocStatus, progress: 100, progressMsg: 'Done', results, text, expanded: false,
+      } : d));
 
-// ── Auto-trigger Reserve Processor for low-confidence results ──
-const hasWeakResults = results.some(r => !r.value || r.confidence < 50);
-if (hasWeakResults) {
-  reserve.submitJob(
-    docId,
-    fileToProcess!.name,
-    text,
-    targets,
-    results
-  );
-}
+      // ── Auto-trigger Reserve Processor for low-confidence results ──
+      const hasWeakResults = results.some(r => !r.value || r.confidence < 50);
+      if (hasWeakResults) {
+        reserve.submitJob(
+          docId,
+          (fileToProcess as File).name,
+          text,
+          targets,
+          results
+        );
+      }
 
     } catch (err: any) {
       console.error('Extraction error:', err);
       setDocs(prev => prev.map(d => d.id === docId ? {
-        ...d, status: 'error', error: err.message || 'Failed to extract text',
+        ...d, status: 'error' as DocStatus, error: err.message || 'Failed to extract text',
       } : d));
     }
-  }, [targets, corrections, debugMode]);
+  }, [targets, corrections, debugMode, reserve]);
 
   const processQueue = useCallback(async () => {
     if (processingRef.current) return;
@@ -1268,9 +1281,15 @@ if (hasWeakResults) {
     for (const d of doneDocs) {
       const results = extractValues(d.text, targets, corrections, debugMode);
       setDocs(prev => prev.map(doc => doc.id === d.id ? { ...doc, results } : doc));
+
+      // Auto-trigger reserve for re-extracted docs with weak results
+      const hasWeakResults = results.some(r => !r.value || r.confidence < 50);
+      if (hasWeakResults) {
+        reserve.submitJob(d.id, d.file.name, d.text, targets, results);
+      }
     }
     addToast(`Re-extracted ${doneDocs.length} document${doneDocs.length > 1 ? 's' : ''}`, 'success');
-  }, [docs, targets, corrections, debugMode, addToast]);
+  }, [docs, targets, corrections, debugMode, addToast, reserve]);
 
   const addTarget = useCallback(() => {
     if (!newTarget.label.trim()) return;
@@ -1327,7 +1346,6 @@ if (hasWeakResults) {
         color: T.text.primary,
         padding: 24,
       }}>
-        {/* Render Preview Modal if active */}
         <AnimatePresence>
           {previewDoc && <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
         </AnimatePresence>
@@ -1351,6 +1369,25 @@ if (hasWeakResults) {
             </div>
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {/* Reserve status indicator */}
+              {reserve.isProcessing && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 12px', borderRadius: 10,
+                  background: T.accent.amberBg,
+                  border: `1px solid ${T.accent.amberBorder}`,
+                  fontSize: 11, fontWeight: 600, color: T.accent.amber,
+                }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    border: `2px solid ${T.accent.amber}`,
+                    borderTopColor: 'transparent',
+                    animation: 'spin 0.8s linear infinite',
+                  }} />
+                  Reserve analyzing...
+                </div>
+              )}
+              
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setDebugMode(!debugMode)}
@@ -1782,7 +1819,7 @@ if (hasWeakResults) {
                       onRemove={removeDoc}
                       onUpdate={updateDoc}
                       onRetry={retryDoc}
-                      onPreview={setPreviewDoc} // Pass the preview handler
+                      onPreview={setPreviewDoc}
                       addToast={addToast}
                     />
                   ))}

@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── Types (shared with DocumentProcessor) ───────────────────────────────────
 
-type TargetType = 'money' | 'date' | 'number' | 'text' | 'percent';
-type CurrencyPref = 'Any' | 'GBP' | 'USD' | 'EUR';
+// In ReserveProcessor.tsx — add "export" to each type that DocumentProcessorDev.tsx imports
 
-interface ExtractionTarget {
+export type TargetType = 'money' | 'date' | 'number' | 'text' | 'percent';
+export type CurrencyPref = 'Any' | 'GBP' | 'USD' | 'EUR';
+
+export interface ExtractionTarget {
   id: string;
   label: string;
   synonyms: string;
@@ -14,7 +16,7 @@ interface ExtractionTarget {
   currency: CurrencyPref;
 }
 
-interface Candidate {
+export interface Candidate {
   value: string;
   rawValue: string;
   score: number;
@@ -24,7 +26,7 @@ interface Candidate {
   position: number;
 }
 
-interface ExtractionResult {
+export interface ExtractionResult {
   targetId: string;
   targetLabel: string;
   value: string;
@@ -35,7 +37,7 @@ interface ExtractionResult {
   position: number;
 }
 
-interface ReserveResult {
+export interface ReserveResult {
   targetId: string;
   targetLabel: string;
   value: string;
@@ -48,7 +50,7 @@ interface ReserveResult {
   improved: boolean;
 }
 
-interface ReserveProcessorJob {
+export interface ReserveProcessorJob {
   id: string;
   docId: string;
   fileName: string;
@@ -62,23 +64,6 @@ interface ReserveProcessorJob {
   error: string | null;
   startedAt: number | null;
   completedAt: number | null;
-}
-
-type TechniqueId =
-  | 'fuzzy_label'
-  | 'context_window'
-  | 'pattern_relaxation'
-  | 'structural_analysis'
-  | 'reverse_lookup'
-  | 'ngram_proximity'
-  | 'multiline_merge'
-  | 'ocr_correction';
-
-interface TechniqueInfo {
-  id: TechniqueId;
-  name: string;
-  description: string;
-  icon: string;
 }
 
 // ─── Design Tokens (matching DocumentProcessor) ──────────────────────────────
@@ -1803,6 +1788,26 @@ export interface UseReserveProcessorReturn {
   /** The panel component to render */
   PanelComponent: React.ReactNode;
 }
+// ─── Hook: useReserveProcessor ───────────────────────────────────────────────
+
+export interface UseReserveProcessorReturn {
+  jobs: ReserveProcessorJob[];
+  isOpen: boolean;
+  openPanel: () => void;
+  closePanel: () => void;
+  submitJob: (
+    docId: string,
+    fileName: string,
+    text: string,
+    targets: ExtractionTarget[],
+    originalResults: ExtractionResult[]
+  ) => void;
+  onApplyResults: (docId: string, results: ReserveResult[]) => void;
+  updateJob: (jobId: string, updates: Partial<ReserveProcessorJob>) => void;
+  totalImproved: number;
+  isProcessing: boolean;
+  PanelComponent: React.ReactNode;
+}
 
 export function useReserveProcessor(
   applyResultsCallback: (docId: string, results: ReserveResult[]) => void
@@ -1810,10 +1815,20 @@ export function useReserveProcessor(
   const [jobs, setJobs] = useState<ReserveProcessorJob[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
+  // ── FIX 1: Use refs for stable references in async processing ──
+  const processingRef = useRef(false);
+  const jobsRef = useRef(jobs);
+  const applyCallbackRef = useRef(applyResultsCallback);
+
+  // Keep refs in sync
+  useEffect(() => { jobsRef.current = jobs; }, [jobs]);
+  useEffect(() => { applyCallbackRef.current = applyResultsCallback; }, [applyResultsCallback]);
+
   const updateJob = useCallback((jobId: string, updates: Partial<ReserveProcessorJob>) => {
     setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...updates } : j));
   }, []);
 
+  // ── FIX 2: submitJob uses functional setState to avoid stale closure ──
   const submitJob = useCallback((
     docId: string,
     fileName: string,
@@ -1821,9 +1836,6 @@ export function useReserveProcessor(
     targets: ExtractionTarget[],
     originalResults: ExtractionResult[]
   ) => {
-    // Don't submit if already exists for this doc
-    if (jobs.some(j => j.docId === docId && (j.status === 'queued' || j.status === 'processing'))) return;
-
     const job: ReserveProcessorJob = {
       id: uid(),
       docId,
@@ -1836,27 +1848,141 @@ export function useReserveProcessor(
       progressMsg: '',
       reserveResults: [],
       error: null,
-            startedAt: null,
+      startedAt: null,
       completedAt: null,
     };
 
     setJobs(prev => {
+      // Check inside functional update to avoid stale closure
       const exists = prev.some(
         j => j.docId === docId && (j.status === 'queued' || j.status === 'processing')
       );
-      return exists ? prev : [job, ...prev];
+      if (exists) {
+        console.log(`[Reserve] Skipping duplicate job for doc ${docId}`);
+        return prev;
+      }
+      console.log(`[Reserve] Queued job for "${fileName}" (doc: ${docId})`);
+      return [job, ...prev];
     });
-  }, []);
+  }, []); // No dependencies needed — uses functional setState
 
   const openPanel = useCallback(() => setIsOpen(true), []);
   const closePanel = useCallback(() => setIsOpen(false), []);
 
   const onApplyResults = useCallback(
     (docId: string, results: ReserveResult[]) => {
-      applyResultsCallback(docId, results);
+      console.log(`[Reserve] Applying ${results.filter(r => r.improved).length} improved results for doc ${docId}`);
+      applyCallbackRef.current(docId, results);
     },
-    [applyResultsCallback]
+    []
   );
+
+  // ── FIX 3: Completely rewritten job processor with proper async handling ──
+  useEffect(() => {
+    const processNext = async () => {
+      if (processingRef.current) return;
+
+      // Find next queued job from current state
+      const currentJobs = jobsRef.current;
+      const nextJob = currentJobs.find(j => j.status === 'queued');
+      if (!nextJob) return;
+
+      processingRef.current = true;
+      console.log(`[Reserve] Starting processing: "${nextJob.fileName}"`);
+
+      // Mark as processing
+      setJobs(prev => prev.map(j =>
+        j.id === nextJob.id
+          ? { ...j, status: 'processing' as const, progress: 0, progressMsg: 'Starting reserve analysis...', startedAt: Date.now() }
+          : j
+      ));
+
+      try {
+        // Give React time to render the processing state
+        await new Promise(r => setTimeout(r, 100));
+
+        // Create a progress updater that batches updates
+        let lastProgressUpdate = 0;
+        const progressUpdater = (progress: number, msg: string) => {
+          const now = Date.now();
+          // Throttle progress updates to every 200ms
+          if (now - lastProgressUpdate > 200 || progress >= 100) {
+            lastProgressUpdate = now;
+            setJobs(prev => prev.map(j =>
+              j.id === nextJob.id
+                ? { ...j, progress, progressMsg: msg }
+                : j
+            ));
+          }
+        };
+
+        // Run the actual extraction
+        const reserveResults = runReserveExtraction(
+          nextJob.text,
+          nextJob.targets,
+          nextJob.originalResults,
+          progressUpdater
+        );
+
+        const improvedCount = reserveResults.filter(r => r.improved).length;
+        console.log(`[Reserve] Completed "${nextJob.fileName}": ${improvedCount} improved out of ${reserveResults.length}`);
+
+        // Log what was improved for debugging
+        for (const r of reserveResults) {
+          if (r.improved) {
+            const orig = nextJob.originalResults.find(o => o.targetId === r.targetId);
+            console.log(`[Reserve] ✓ "${r.targetLabel}": "${orig?.value || '—'}" (${orig?.confidence || 0}%) → "${r.value}" (${r.confidence}%) via ${r.technique}`);
+          }
+        }
+
+        // Mark as done
+        setJobs(prev => prev.map(j =>
+          j.id === nextJob.id
+            ? {
+                ...j,
+                status: 'done' as const,
+                progress: 100,
+                progressMsg: 'Complete',
+                reserveResults,
+                completedAt: Date.now(),
+              }
+            : j
+        ));
+
+        // Auto-apply: call the callback with improved results
+        if (improvedCount > 0) {
+          // Small delay to ensure state is committed
+          await new Promise(r => setTimeout(r, 50));
+          console.log(`[Reserve] Auto-applying ${improvedCount} improvements for doc ${nextJob.docId}`);
+          applyCallbackRef.current(nextJob.docId, reserveResults);
+        }
+
+      } catch (err: any) {
+        console.error(`[Reserve] Failed for "${nextJob.fileName}":`, err);
+        setJobs(prev => prev.map(j =>
+          j.id === nextJob.id
+            ? {
+                ...j,
+                status: 'failed' as const,
+                error: err.message || 'Reserve processing failed',
+                completedAt: Date.now(),
+              }
+            : j
+        ));
+      }
+
+      processingRef.current = false;
+
+      // Check for more queued jobs after a small delay
+      setTimeout(processNext, 200);
+    };
+
+    // Trigger processing whenever jobs change and there's something queued
+    const hasQueued = jobs.some(j => j.status === 'queued');
+    if (hasQueued && !processingRef.current) {
+      processNext();
+    }
+  }, [jobs]); // Only depend on jobs — callbacks use refs
 
   const totalImproved = jobs.reduce(
     (sum, j) => sum + (j.status === 'done' ? j.reserveResults.filter(r => r.improved).length : 0),
