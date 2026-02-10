@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(bun run build:*)",
+      "Bash(while read:*)",
+      "Bash(do sed -i \"s/^import {$/import type {/\" \"$f\")",
+      "Bash(done)"
+    ]
+  }
+}
