@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+:root {
+  --scrollbar-size: 12px;
+  --scrollbar-track: rgba(39, 39, 42, 0.7);
+  --scrollbar-thumb: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+  --scrollbar-thumb-hover: linear-gradient(180deg, #818cf8 0%, #6366f1 100%);
+  --scrollbar-border: rgba(255, 255, 255, 0.08);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #6366f1 rgba(39, 39, 42, 0.7);
+}
+
+/* Chromium/Safari */
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 2px solid var(--scrollbar-border);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

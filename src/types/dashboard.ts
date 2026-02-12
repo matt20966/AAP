@@ -11,6 +11,7 @@ export type WidgetType =
   | 'pie-chart'
   | 'sankey'
   | 'table'
+  | 'cheese-expiry-table'
   | 'area-chart'
   | 'scatter-plot'
   | 'heatmap'

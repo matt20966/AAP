@@ -4,6 +4,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { withHtml2CanvasColorFix } from './utils/html2canvasSafe';
 import type {
   TimeRange,
   TabKey,
@@ -11,7 +12,12 @@ import type {
   DashboardSettings,
   WidgetColor,
 } from './types/dashboard';
-import { getDashboardData, getDefaultLayout, WIDGET_CATALOG } from './data/dashboardData';
+import {
+  CHART_REGISTRY,
+  getDashboardData,
+  getDefaultLayout,
+  WIDGET_CATALOG,
+} from './data/dashboardData';
 import GridLayout from './layouts/GridLayout';
 
 // ─── Design Tokens ──────────────────────────────────────────────────
@@ -203,7 +209,7 @@ function loadState(): { layouts: Record<string, WidgetConfig[]>; settings: Dashb
       locale: 'en-GB',
       timezone: 'Europe/London',
       dateFormat: 'dd/MM/yyyy',
-      numberFormat: 'uk',
+      numberFormat: 'eu',
       densityMode: 'comfortable',
     },
   };
@@ -605,6 +611,9 @@ function getTabLabel(tab: TabKey): string {
     main: 'Overview Dashboard',
     warehouse: 'Warehouse Dashboard',
     sales: 'Sales Dashboard',
+    analytics: 'Analytics Dashboard',
+    inventory: 'Inventory Dashboard',
+    playground: 'Playground Dashboard',
   };
   return labels[tab] || tab;
 }
@@ -614,6 +623,9 @@ function getTabDescription(tab: TabKey): string {
     main: 'Comprehensive overview of all business operations, financial metrics, and key performance indicators.',
     warehouse: 'Warehouse operations, inventory levels, fulfillment rates, and logistics performance metrics.',
     sales: 'Sales performance, revenue analytics, customer acquisition, and pipeline management overview.',
+    analytics: 'Cross-functional analytics with trend analysis and performance benchmarking.',
+    inventory: 'Inventory health, stock movement, and replenishment risk indicators.',
+    playground: 'Experimental workspace with all available widgets and synthetic datasets.',
   };
   return descriptions[tab] || '';
 }
@@ -718,7 +730,7 @@ function drawMiniBarChart(
 }
 
 // Helper: draw mini pie chart
-function drawMiniPie(
+export function drawMiniPie(
   doc: jsPDF,
   data: { label: string; value: number; color: string }[],
   cx: number,
@@ -877,7 +889,7 @@ function extractTableData(data: any): Array<{ title: string; headers: string[]; 
 }
 
 async function generateDashboardPDF(options: PDFGeneratorOptions): Promise<void> {
-  const { tab, timeRange, dashboardData, widgets, settings } = options;
+  const { tab, timeRange, dashboardData, widgets } = options;
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -1381,10 +1393,10 @@ async function generateDashboardPDF(options: PDFGeneratorOptions): Promise<void>
 
 // ───── PDF with Screenshot approach (captures actual charts) ─────
 async function generatePDFWithScreenshot(
-  gridRef: React.RefObject<HTMLDivElement>,
+  gridRef: React.RefObject<HTMLDivElement | null>,
   options: PDFGeneratorOptions,
 ): Promise<void> {
-  const { tab, timeRange, dashboardData, widgets, settings } = options;
+  const { tab, timeRange, widgets } = options;
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -1448,7 +1460,12 @@ async function generatePDFWithScreenshot(
   // Screenshot of the actual dashboard
   if (gridRef.current) {
     try {
-      const canvas = await html2canvas(gridRef.current, {
+      const rect = gridRef.current.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        throw new Error('Dashboard grid is not visible');
+      }
+
+      const canvas = await html2canvas(gridRef.current, withHtml2CanvasColorFix({
         backgroundColor: '#0a0a0f',
         scale: 2,
         logging: false,
@@ -1456,7 +1473,7 @@ async function generatePDFWithScreenshot(
         allowTaint: true,
         windowWidth: gridRef.current.scrollWidth,
         windowHeight: gridRef.current.scrollHeight,
-      });
+      }));
 
       const imgData = canvas.toDataURL('image/png');
       const imgW = contentW;
@@ -1556,7 +1573,7 @@ function DownloadPDFButton({
   dashboardData: any;
   widgets: WidgetConfig[];
   settings: DashboardSettings;
-  gridRef: React.RefObject<HTMLDivElement>;
+  gridRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
@@ -2291,13 +2308,35 @@ const DashboardPage: React.FC = () => {
 
   const layoutKey = `${activeTab}-${timeRange}`;
 
-  const currentWidgets = useMemo(() => {
-    return layouts[layoutKey] || getDefaultLayout(activeTab);
-  }, [layouts, layoutKey, activeTab]);
-
   const dashboardData = useMemo(() => {
     return getDashboardData(activeTab, timeRange);
   }, [activeTab, timeRange]);
+
+  const demoData = useMemo(() => {
+    return getDashboardData('playground', timeRange);
+  }, [timeRange]);
+
+  const gridData = useMemo(() => {
+    return { ...demoData, ...dashboardData };
+  }, [demoData, dashboardData]);
+
+  const currentWidgets = useMemo(() => {
+    const baseWidgets = layouts[layoutKey] || getDefaultLayout(activeTab);
+
+    return baseWidgets.map((widget) => {
+      const hasValidDataKey = !!widget.dataKey && gridData[widget.dataKey] !== undefined;
+      if (hasValidDataKey) return widget;
+
+      const fallbackEntry = CHART_REGISTRY.find((entry) => entry.widgetType === widget.type);
+      if (!fallbackEntry) return widget;
+
+      return {
+        ...widget,
+        title: widget.title || fallbackEntry.label,
+        dataKey: fallbackEntry.key,
+      };
+    });
+  }, [layouts, layoutKey, activeTab, gridData]);
 
   const handleUpdateWidgets = useCallback(
     (widgets: WidgetConfig[]) => {
@@ -2331,8 +2370,26 @@ const DashboardPage: React.FC = () => {
       const catalog = WIDGET_CATALOG.find((c) => c.type === type);
       if (!catalog) return;
 
+      const compatibleEntries = CHART_REGISTRY.filter((entry) => entry.widgetType === type);
+      if (compatibleEntries.length === 0) return;
+
       const maxY =
         currentWidgets.length > 0 ? Math.max(...currentWidgets.map((w) => w.y + w.h)) : 0;
+
+      const usedKeys = new Set(
+        currentWidgets
+          .filter((widget) => widget.type === type && widget.dataKey)
+          .map((widget) => widget.dataKey),
+      );
+
+      const preferredEntry =
+        compatibleEntries.find(
+          (entry) =>
+            Object.prototype.hasOwnProperty.call(dashboardData, entry.key) && !usedKeys.has(entry.key),
+        ) ||
+        compatibleEntries.find((entry) => Object.prototype.hasOwnProperty.call(dashboardData, entry.key)) ||
+        compatibleEntries.find((entry) => !usedKeys.has(entry.key)) ||
+        compatibleEntries[0];
 
       const colorOptions: WidgetColor[] = [
         'indigo', 'emerald', 'amber', 'sky', 'violet', 'rose', 'orange', 'cyan',
@@ -2341,8 +2398,8 @@ const DashboardPage: React.FC = () => {
       const newWidget: WidgetConfig = {
         id: `${type}-${Date.now()}`,
         type,
-        title: catalog.label,
-        dataKey: '',
+        title: preferredEntry?.label || catalog.label,
+        dataKey: preferredEntry?.key || '',
         x: 0,
         y: maxY,
         w: catalog.defaultW,
@@ -2352,7 +2409,7 @@ const DashboardPage: React.FC = () => {
 
       handleUpdateWidgets([...currentWidgets, newWidget]);
     },
-    [currentWidgets, handleUpdateWidgets],
+    [currentWidgets, dashboardData, handleUpdateWidgets],
   );
 
   return (
@@ -2571,7 +2628,7 @@ const DashboardPage: React.FC = () => {
                 <div ref={gridRef}>
                   <GridLayout
                     widgets={currentWidgets}
-                    data={dashboardData}
+                    data={gridData}
                     settings={settings}
                     onUpdateWidgets={handleUpdateWidgets}
                     onRemoveWidget={handleRemoveWidget}

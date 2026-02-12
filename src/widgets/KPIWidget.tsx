@@ -18,10 +18,9 @@ interface KPIWidgetProps {
   data: KPIData;
   showTitle?: boolean;
   title?: string;
-  color?: string;
 }
 
-const KPIWidget: React.FC<KPIWidgetProps> = ({ data, showTitle, title, color = 'indigo' }) => {
+const KPIWidget: React.FC<KPIWidgetProps> = ({ data, showTitle, title }) => {
   const trendColors = {
     up: 'text-emerald-400 bg-emerald-500/10',
     down: 'text-rose-400 bg-rose-500/10',

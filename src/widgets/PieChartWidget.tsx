@@ -1,7 +1,7 @@
 // components/widgets/PieChartWidget.tsx
 
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import type { PieSlice } from '../types/dashboard';
 
 interface PieChartWidgetProps {

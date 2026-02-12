@@ -24,5 +24,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/builder/**/*",
+    "src/charts/**/*",
+    "src/data/chartDatasets.ts",
+    "src/data/chartsDataset.ts",
+    "src/utils/exportChart.ts"
+  ]
 }

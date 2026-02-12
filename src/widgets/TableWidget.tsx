@@ -1,57 +1,64 @@
-// components/widgets/TableWidget.tsx
-// (Minor fixes for overflow handling - mostly fine as-is)
-
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import type { SalesPersonRow, LowStockItem } from '../types/dashboard';
+import type { LowStockItem, SalesPersonRow } from '../types/dashboard';
+
+type GenericRow = Record<string, unknown>;
 
 interface TableWidgetProps {
-  data: SalesPersonRow[] | LowStockItem[];
+  data: GenericRow[];
   dataKey: string;
   showTitle: boolean;
   title: string;
 }
 
-function isSalesData(data: any[], key: string): data is SalesPersonRow[] {
+function isSalesData(key: string): boolean {
   return key === 'topSales';
 }
 
-function isStockData(data: any[], key: string): data is LowStockItem[] {
+function isStockData(key: string): boolean {
   return key === 'lowStock';
 }
 
-const TableWidget: React.FC<TableWidgetProps> = ({
-  data,
-  dataKey,
-  showTitle,
-  title,
-}) => {
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'number') return value.toLocaleString();
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (value instanceof Date) return value.toLocaleDateString();
+  return String(value);
+}
+
+const TableWidget: React.FC<TableWidgetProps> = ({ data, dataKey, showTitle, title }) => {
   const [sortCol, setSortCol] = useState<string>('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const toggleSort = (col: string) => {
     if (sortCol === col) {
       setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
-    } else {
-      setSortCol(col);
-      setSortDir('desc');
+      return;
     }
+    setSortCol(col);
+    setSortDir('desc');
   };
 
   const headerClass = (col: string) =>
     `text-left text-[9px] font-bold uppercase tracking-[0.08em] cursor-pointer select-none transition-colors whitespace-nowrap ${
-      sortCol === col
-        ? 'text-indigo-400'
-        : 'text-zinc-600 hover:text-zinc-400'
+      sortCol === col ? 'text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'
     }`;
 
-  if (isSalesData(data, dataKey)) {
-    const sorted = [...data].sort((a, b) => {
+  if (!Array.isArray(data) || data.length === 0) {
+    return <div className="text-zinc-500 text-sm">No data available</div>;
+  }
+
+  if (isSalesData(dataKey)) {
+    const salesData = data as unknown as SalesPersonRow[];
+    const sorted = [...salesData].sort((a, b) => {
       if (!sortCol) return 0;
-      const aVal = (a as any)[sortCol];
-      const bVal = (b as any)[sortCol];
+      const aVal = (a as unknown as Record<string, unknown>)[sortCol];
+      const bVal = (b as unknown as Record<string, unknown>)[sortCol];
       const cmp =
-        typeof aVal === 'string' ? aVal.localeCompare(bVal) : aVal - bVal;
+        typeof aVal === 'string' && typeof bVal === 'string'
+          ? aVal.localeCompare(bVal)
+          : Number(aVal ?? 0) - Number(bVal ?? 0);
       return sortDir === 'desc' ? -cmp : cmp;
     });
 
@@ -66,9 +73,7 @@ const TableWidget: React.FC<TableWidgetProps> = ({
         {showTitle && (
           <div className="flex items-center gap-2 mb-2 flex-shrink-0">
             <div className="w-2 h-2 rounded-full bg-indigo-400" />
-            <span className="text-xs font-bold text-zinc-300 truncate">
-              {title}
-            </span>
+            <span className="text-xs font-bold text-zinc-300 truncate">{title}</span>
           </div>
         )}
 
@@ -76,35 +81,18 @@ const TableWidget: React.FC<TableWidgetProps> = ({
           <table className="w-full">
             <thead className="sticky top-0 bg-[#131316]">
               <tr className="border-b border-white/[0.05]">
-                <th className="pb-2 pr-2 w-8 text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">
-                  #
-                </th>
-                <th
-                  className={`pb-2 pr-2 ${headerClass('name')}`}
-                  onClick={() => toggleSort('name')}
-                >
+                <th className="pb-2 pr-2 w-8 text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">#</th>
+                <th className={`pb-2 pr-2 ${headerClass('name')}`} onClick={() => toggleSort('name')}>
                   Name {sortCol === 'name' && (sortDir === 'desc' ? '↓' : '↑')}
                 </th>
-                <th
-                  className={`pb-2 pr-2 text-right ${headerClass('revenue')}`}
-                  onClick={() => toggleSort('revenue')}
-                >
-                  Revenue{' '}
-                  {sortCol === 'revenue' && (sortDir === 'desc' ? '↓' : '↑')}
+                <th className={`pb-2 pr-2 text-right ${headerClass('revenue')}`} onClick={() => toggleSort('revenue')}>
+                  Revenue {sortCol === 'revenue' && (sortDir === 'desc' ? '↓' : '↑')}
                 </th>
-                <th
-                  className={`pb-2 pr-2 text-right ${headerClass('profit')}`}
-                  onClick={() => toggleSort('profit')}
-                >
-                  Profit{' '}
-                  {sortCol === 'profit' && (sortDir === 'desc' ? '↓' : '↑')}
+                <th className={`pb-2 pr-2 text-right ${headerClass('profit')}`} onClick={() => toggleSort('profit')}>
+                  Profit {sortCol === 'profit' && (sortDir === 'desc' ? '↓' : '↑')}
                 </th>
-                <th
-                  className={`pb-2 text-right ${headerClass('winRate')}`}
-                  onClick={() => toggleSort('winRate')}
-                >
-                  Win Rate{' '}
-                  {sortCol === 'winRate' && (sortDir === 'desc' ? '↓' : '↑')}
+                <th className={`pb-2 text-right ${headerClass('winRate')}`} onClick={() => toggleSort('winRate')}>
+                  Win Rate {sortCol === 'winRate' && (sortDir === 'desc' ? '↓' : '↑')}
                 </th>
               </tr>
             </thead>
@@ -120,9 +108,7 @@ const TableWidget: React.FC<TableWidgetProps> = ({
                   <td className="py-2 pr-2">
                     <span
                       className={`inline-flex items-center justify-center w-5 h-5 rounded-md text-[8px] font-extrabold ${
-                        i < 3
-                          ? badgeColors[i]
-                          : 'bg-white/[0.03] text-zinc-600'
+                        i < 3 ? badgeColors[i] : 'bg-white/[0.03] text-zinc-600'
                       }`}
                     >
                       {person.rank}
@@ -131,13 +117,9 @@ const TableWidget: React.FC<TableWidgetProps> = ({
                   <td className="py-2 pr-2">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-md bg-gradient-to-br from-indigo-500/10 to-violet-500/5 border border-indigo-500/10 flex items-center justify-center flex-shrink-0">
-                        <span className="text-[7px] font-bold text-indigo-300">
-                          {person.avatar}
-                        </span>
+                        <span className="text-[7px] font-bold text-indigo-300">{person.avatar}</span>
                       </div>
-                      <span className="text-[11px] font-semibold text-zinc-200 truncate">
-                        {person.name}
-                      </span>
+                      <span className="text-[11px] font-semibold text-zinc-200 truncate">{person.name}</span>
                     </div>
                   </td>
                   <td className="py-2 pr-2 text-right">
@@ -156,8 +138,8 @@ const TableWidget: React.FC<TableWidgetProps> = ({
                         person.winRate >= 70
                           ? 'text-emerald-400 bg-emerald-500/10'
                           : person.winRate >= 60
-                          ? 'text-amber-400 bg-amber-500/10'
-                          : 'text-rose-400 bg-rose-500/10'
+                            ? 'text-amber-400 bg-amber-500/10'
+                            : 'text-rose-400 bg-rose-500/10'
                       }`}
                     >
                       {person.winRate}%
@@ -172,7 +154,8 @@ const TableWidget: React.FC<TableWidgetProps> = ({
     );
   }
 
-  if (isStockData(data, dataKey)) {
+  if (isStockData(dataKey)) {
+    const stockData = data as unknown as LowStockItem[];
     const statusColors: Record<string, string> = {
       critical: 'text-rose-400 bg-rose-500/10 border-rose-500/15',
       low: 'text-amber-400 bg-amber-500/10 border-amber-500/15',
@@ -184,9 +167,7 @@ const TableWidget: React.FC<TableWidgetProps> = ({
         {showTitle && (
           <div className="flex items-center gap-2 mb-2 flex-shrink-0">
             <div className="w-2 h-2 rounded-full bg-rose-400" />
-            <span className="text-xs font-bold text-zinc-300 truncate">
-              {title}
-            </span>
+            <span className="text-xs font-bold text-zinc-300 truncate">{title}</span>
           </div>
         )}
 
@@ -194,22 +175,14 @@ const TableWidget: React.FC<TableWidgetProps> = ({
           <table className="w-full">
             <thead className="sticky top-0 bg-[#131316]">
               <tr className="border-b border-white/[0.05]">
-                <th className="pb-2 pr-2 text-left text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">
-                  SKU
-                </th>
-                <th className="pb-2 pr-2 text-left text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">
-                  Item
-                </th>
-                <th className="pb-2 pr-2 text-right text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">
-                  Stock
-                </th>
-                <th className="pb-2 text-right text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">
-                  Status
-                </th>
+                <th className="pb-2 pr-2 text-left text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">SKU</th>
+                <th className="pb-2 pr-2 text-left text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">Item</th>
+                <th className="pb-2 pr-2 text-right text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">Stock</th>
+                <th className="pb-2 text-right text-[9px] font-bold text-zinc-600 uppercase tracking-[0.08em]">Status</th>
               </tr>
             </thead>
             <tbody>
-              {data.map((item, i) => (
+              {stockData.map((item, i) => (
                 <motion.tr
                   key={item.sku}
                   initial={{ opacity: 0, y: 4 }}
@@ -218,46 +191,30 @@ const TableWidget: React.FC<TableWidgetProps> = ({
                   className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors"
                 >
                   <td className="py-2 pr-2">
-                    <span className="text-[10px] font-mono text-zinc-500">
-                      {item.sku}
-                    </span>
+                    <span className="text-[10px] font-mono text-zinc-500">{item.sku}</span>
                   </td>
                   <td className="py-2 pr-2">
                     <div>
-                      <span className="text-[11px] font-semibold text-zinc-200 block truncate">
-                        {item.name}
-                      </span>
-                      <span className="text-[9px] text-zinc-600">
-                        {item.category}
-                      </span>
+                      <span className="text-[11px] font-semibold text-zinc-200 block truncate">{item.name}</span>
+                      <span className="text-[9px] text-zinc-600">{item.category}</span>
                     </div>
                   </td>
                   <td className="py-2 pr-2 text-right">
                     <div>
-                      <span className="text-[11px] font-bold text-zinc-300 tabular-nums">
-                        {item.currentStock}
-                      </span>
-                      <span className="text-[9px] text-zinc-600 ml-1">
-                        / {item.reorderPoint}
-                      </span>
+                      <span className="text-[11px] font-bold text-zinc-300 tabular-nums">{item.currentStock}</span>
+                      <span className="text-[9px] text-zinc-600 ml-1">/ {item.reorderPoint}</span>
                     </div>
-                    <div
-                      className="w-full h-1 mt-1 rounded-full overflow-hidden"
-                      style={{ background: 'rgba(255,255,255,0.04)' }}
-                    >
+                    <div className="w-full h-1 mt-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
                       <div
                         className="h-full rounded-full"
                         style={{
-                          width: `${Math.min(
-                            (item.currentStock / item.reorderPoint) * 100,
-                            100
-                          )}%`,
+                          width: `${Math.min((item.currentStock / item.reorderPoint) * 100, 100)}%`,
                           background:
                             item.status === 'critical'
                               ? 'linear-gradient(90deg, #ef4444, #dc2626)'
                               : item.status === 'low'
-                              ? 'linear-gradient(90deg, #f59e0b, #d97706)'
-                              : 'linear-gradient(90deg, #eab308, #ca8a04)',
+                                ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                                : 'linear-gradient(90deg, #eab308, #ca8a04)',
                         }}
                       />
                     </div>
@@ -280,7 +237,69 @@ const TableWidget: React.FC<TableWidgetProps> = ({
     );
   }
 
-  return <div className="text-zinc-500 text-sm">No data available</div>;
+  const genericRows = data as GenericRow[];
+  const columns = Array.from(new Set(genericRows.flatMap((row) => Object.keys(row)))).slice(0, 6);
+
+  const sortedGenericRows = (() => {
+    if (!sortCol) return genericRows;
+    return [...genericRows].sort((a, b) => {
+      const aVal = a[sortCol];
+      const bVal = b[sortCol];
+
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      }
+
+      const cmp = String(aVal ?? '').localeCompare(String(bVal ?? ''), undefined, { numeric: true });
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+  })();
+
+  return (
+    <div className="h-full flex flex-col min-h-0">
+      {showTitle && (
+        <div className="flex items-center gap-2 mb-2 flex-shrink-0">
+          <div className="w-2 h-2 rounded-full bg-cyan-400" />
+          <span className="text-xs font-bold text-zinc-300 truncate">{title}</span>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-auto min-h-0">
+        <table className="w-full">
+          <thead className="sticky top-0 bg-[#131316]">
+            <tr className="border-b border-white/[0.05]">
+              {columns.map((col) => (
+                <th
+                  key={col}
+                  className={`pb-2 pr-2 ${headerClass(col)}`}
+                  onClick={() => toggleSort(col)}
+                >
+                  {col.replace(/([A-Z])/g, ' $1')} {sortCol === col && (sortDir === 'desc' ? '↓' : '↑')}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedGenericRows.map((row, rowIdx) => (
+              <motion.tr
+                key={`${rowIdx}-${String(row.id ?? rowIdx)}`}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: rowIdx * 0.02 }}
+                className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors"
+              >
+                {columns.map((col) => (
+                  <td key={col} className="py-2 pr-2 text-[11px] text-zinc-300 whitespace-nowrap">
+                    {formatCellValue(row[col])}
+                  </td>
+                ))}
+              </motion.tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 };
 
 export default TableWidget;

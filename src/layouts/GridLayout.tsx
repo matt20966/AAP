@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { WidgetConfig, DashboardSettings, WidgetColor } from '../types/dashboard';
+import type { WidgetConfig, DashboardSettings } from '../types/dashboard';
 import LineChartWidget from '../widgets/LineChartWidget';
 import BarChartWidget from '../widgets/BarChartWidget';
 import PieChartWidget from '../widgets/PieChartWidget';
@@ -23,7 +23,7 @@ const GAP = 12;
 
 // ─── Color Utilities ──────────────────────────────────────────────────
 
-const COLOR_MAP: Record<WidgetColor, { border: string; accent: string; bg: string }> = {
+const COLOR_MAP: Record<string, { border: string; accent: string; bg: string }> = {
   indigo:  { border: 'border-indigo-500/15',  accent: '#6366f1', bg: 'rgba(99,102,241,0.08)' },
   emerald: { border: 'border-emerald-500/15', accent: '#10b981', bg: 'rgba(16,185,129,0.08)' },
   amber:   { border: 'border-amber-500/15',   accent: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
@@ -472,7 +472,6 @@ const GridLayout: React.FC<GridLayoutProps> = ({
   onRemoveWidget,
 }) => {
   const [dragging, setDragging] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [resizing, setResizing] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -528,7 +527,6 @@ const GridLayout: React.FC<GridLayoutProps> = ({
       const offsetX = clientX - rect.left - widgetPxX;
       const offsetY = clientY - rect.top - widgetPxY;
 
-      setDragOffset({ x: offsetX, y: offsetY });
       setDragging(widgetId);
 
       const handleMove = (ev: MouseEvent | TouchEvent) => {
@@ -639,7 +637,7 @@ const GridLayout: React.FC<GridLayoutProps> = ({
         const colorInfo = COLOR_MAP[widget.color] || COLOR_MAP.indigo;
 
         return (
-          <div className="flex flex-col justify-center h-full px-1">
+          <div className="flex flex-col h-full px-1 min-h-0">
             <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">
               {widget.title || kpi.label}
             </span>
@@ -673,10 +671,12 @@ const GridLayout: React.FC<GridLayoutProps> = ({
               </span>
               <span className="text-[10px] text-zinc-600">vs prior period</span>
             </div>
-            <div
-              className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full opacity-40"
-              style={{ backgroundColor: colorInfo.accent }}
-            />
+            <div className="mt-auto pt-3">
+              <div
+                className="h-0.5 rounded-full opacity-40"
+                style={{ backgroundColor: colorInfo.accent }}
+              />
+            </div>
           </div>
         );
       }

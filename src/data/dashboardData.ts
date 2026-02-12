@@ -70,7 +70,7 @@ function genCumulativeSeries(
 }
 
 // Generate percentage series (0-100)
-function genPercentSeries(count: number, center: number, variance: number, seed: number): number[] {
+export function genPercentSeries(count: number, center: number, variance: number, seed: number): number[] {
   const rng = seeded(seed);
   return Array.from({ length: count }, () => {
     const v = center + (rng() - 0.5) * variance;
@@ -79,7 +79,7 @@ function genPercentSeries(count: number, center: number, variance: number, seed:
 }
 
 // Generate scatter data points
-function genScatterData(
+export function genScatterData(
   count: number,
   xBase: number,
   yBase: number,
@@ -95,7 +95,7 @@ function genScatterData(
 }
 
 // Generate heatmap data
-function genHeatmapData(
+export function genHeatmapData(
   rows: number,
   cols: number,
   seed: number,
@@ -386,7 +386,7 @@ function chartConversionFunnel(): ChartData {
 }
 
 // Hourly heatmap-style data
-function chartHourlyActivity(range: TimeRange): ChartData {
+function chartHourlyActivity(_range: TimeRange): ChartData {
   const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   return {
     labels,
@@ -630,17 +630,31 @@ function pieAgeDistribution(): PieSlice[] {
 function sankeyOrderFlow(): SankeyData {
   return {
     nodes: [
-      { id: 'received', label: 'Received', color: '#6366f1' },
-      { id: 'pick',     label: 'Pick',     color: '#f59e0b' },
-      { id: 'pack',     label: 'Pack',     color: '#0ea5e9' },
-      { id: 'ship',     label: 'Ship',     color: '#10b981' },
+      { id: 'orders', label: 'Orders', color: '#6366f1' },
+      { id: 'in_stock', label: 'In Stock', color: '#10b981' },
+      { id: 'backorder', label: 'Backorder', color: '#f59e0b' },
+      { id: 'picked', label: 'Picked', color: '#22d3ee' },
+      { id: 'packed', label: 'Packed', color: '#0ea5e9' },
+      { id: 'shipped', label: 'Shipped', color: '#14b8a6' },
+      { id: 'delivered', label: 'Delivered', color: '#34d399' },
       { id: 'returned', label: 'Returned', color: '#ef4444' },
+      { id: 'cancelled', label: 'Cancelled', color: '#f43f5e' },
     ],
     links: [
-      { source: 'received', target: 'pick', value: 450, color: 'rgba(99,102,241,0.3)' },
-      { source: 'pick',     target: 'pack', value: 420, color: 'rgba(245,158,11,0.3)' },
-      { source: 'pack',     target: 'ship', value: 400, color: 'rgba(14,165,233,0.3)' },
-      { source: 'ship',     target: 'returned', value: 28, color: 'rgba(239,68,68,0.3)' },
+      { source: 'orders', target: 'in_stock', value: 520, color: 'rgba(99,102,241,0.30)' },
+      { source: 'orders', target: 'backorder', value: 140, color: 'rgba(99,102,241,0.20)' },
+      { source: 'orders', target: 'cancelled', value: 40, color: 'rgba(244,63,94,0.20)' },
+      { source: 'in_stock', target: 'picked', value: 500, color: 'rgba(16,185,129,0.28)' },
+      { source: 'in_stock', target: 'cancelled', value: 20, color: 'rgba(244,63,94,0.18)' },
+      { source: 'backorder', target: 'picked', value: 90, color: 'rgba(245,158,11,0.28)' },
+      { source: 'backorder', target: 'cancelled', value: 50, color: 'rgba(244,63,94,0.20)' },
+      { source: 'picked', target: 'packed', value: 560, color: 'rgba(34,211,238,0.28)' },
+      { source: 'picked', target: 'cancelled', value: 30, color: 'rgba(244,63,94,0.18)' },
+      { source: 'packed', target: 'shipped', value: 540, color: 'rgba(14,165,233,0.28)' },
+      { source: 'packed', target: 'returned', value: 20, color: 'rgba(239,68,68,0.20)' },
+      { source: 'shipped', target: 'delivered', value: 510, color: 'rgba(20,184,166,0.28)' },
+      { source: 'shipped', target: 'returned', value: 30, color: 'rgba(239,68,68,0.22)' },
+      { source: 'delivered', target: 'returned', value: 14, color: 'rgba(239,68,68,0.20)' },
     ],
   };
 }
@@ -965,6 +979,8 @@ export function getDefaultLayout(tab: TabKey): WidgetConfig[] {
     case 'playground':
       return buildPlaygroundLayout();
   }
+
+  return getDefaultLayout('main');
 }
 
 // Automatically build a layout from the entire registry
