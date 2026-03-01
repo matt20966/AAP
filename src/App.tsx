@@ -571,7 +571,7 @@ export default function ApteanKnowledgeExtractor() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const filesOnlyInputRef = useRef<HTMLInputElement>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPollTimeRef = useRef<number>(0);
 
   // Preload PDF.js on mount
