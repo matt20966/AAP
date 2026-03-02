@@ -16,7 +16,6 @@ import {
   CopyPlus,
   Download,
   Radio,
-  Wifi,
   WifiOff,
   ClipboardPaste,
   FileDown,
