@@ -1,0 +1,58 @@
+SELECT
+            sopin.customerid AS "CUSTOMER_ID",
+            CASE WHEN sophead.sopheadid IS NULL THEN ainvhead.inv_name ELSE sophead.inv_name END AS "CUSTOMER_NAME",
+            sopin.inv_account AS "CUSTOMER_ACCOUNT",
+            COALESCE( ( ( sopin.qty * sopin.price * ( 100 - sopin.disc1 ) * ( 100 - sopin.disc2 ) * ( 100 - sopin.disc3 ) / 1000000 / sopin.uoi ) - sopin.cost ) / sopin.rate, 0.0 ) AS "MARGIN",
+            COALESCE( ( ( sopin.qty * sopin.price * ( 100 - sopin.disc1 ) * ( 100 - sopin.disc2 ) * ( 100 - sopin.disc3 ) / 1000000 / sopin.uoi ) - sopin.cost ) / sopin.rate / 1000, 0.0 ) AS "MARGIN_K",
+            CASE 
+    WHEN (sopin.qty * sopin.price * (100 - sopin.disc1) * (100 - sopin.disc2) * (100 - sopin.disc3) / 1000000 / sopin.uoi) = 0.0
+        THEN (sopin.qty * sopin.price * (100 - sopin.disc1) * (100 - sopin.disc2) * (100 - sopin.disc3) / 1000000 / sopin.uoi)
+    ELSE 
+        (
+            (sopin.qty * sopin.price * (100 - sopin.disc1) * (100 - sopin.disc2) * (100 - sopin.disc3) / 1000000 / sopin.uoi) 
+            - (sopin.qty * sopin.cost)) 
+        /
+        (sopin.qty * sopin.price * (100 - sopin.disc1) * (100 - sopin.disc2) * (100 - sopin.disc3) / 1000000 / sopin.uoi) * 100
+             END AS "PROFIT_PCT"
+            salesman.name AS "SALESMAN_NAME",
+            salesman.code AS "SALESMAN_CODE",
+            sopin.sysdate::DATE AS "SALES_ORDER_DATE",
+            COALESCE( sopin.qty * sopin.price * ( 100 - sopin.disc1 ) * ( 100 - sopin.disc2 ) * ( 100 - sopin.disc3 ) / 1000000 / sopin.uoi / sopin.rate, 0.0 ) AS "SALES_ORDER_VALUE",
+            COALESCE( sopin.qty * sopin.price * ( 100 - sopin.disc1 ) * ( 100 - sopin.disc2 ) * ( 100 - sopin.disc3 ) / 1000000 / sopin.uoi / sopin.rate / 1000, 0.0 ) AS "SALES_ORDER_VALUE_K",
+            sysuser.usernum AS "USER",
+            sysuser.name AS "USER_NAME"
+        FROM sopin
+        LEFT JOIN salesman
+        ON sopin.company = salesman.company
+        AND sopin.salesman = salesman.code
+        JOIN customer
+        ON sopin.customerid = customer.customerid
+        LEFT JOIN sophead
+        ON sophead.company = sopin.company
+        AND sophead.sales_order = sopin.sales_order
+        AND sophead.flag_delete <> 2
+        AND sophead.order_type = 'O'
+        LEFT JOIN (SELECT company,sales_order,inv_account,min(invoice) invoice from slconinv GROUP by company,sales_order,inv_account) slconinv 
+        ON sopin.company = slconinv.company
+        AND sopin.sales_order = slconinv.sales_order
+        AND sopin.inv_account = slconinv.inv_account
+        LEFT JOIN ainvhead
+        ON slconinv.company = ainvhead.company
+        AND slconinv.invoice = ainvhead.invoice
+        AND DATE_TRUNC( 'MONTH', CURRENT_DATE ) = DATE_TRUNC( 'MONTH', ainvhead.invoice_date )
+        JOIN sysuser
+        ON sysuser.usernum = sophead.user_created
+        OR sysuser.usernum = ainvhead.user_created
+        WHERE sopin.company = {COMPANY}
+        AND DATE_TRUNC( 'MONTH', sopin.sysdate ) = DATE_TRUNC( 'MONTH', CURRENT_DATE )
+        AND ( ainvhead.ainvheadid IS NOT NULL OR sophead.sopheadid IS NOT NULL )
+        AND CASE
+            WHEN '{SALESMAN_CODE}' <> ( '{' || 'SALESMAN_CODE}' )
+            THEN sophead.salesman = ANY( '{{SALESMAN_CODE}}'::CHARACTER VARYING[] ) OR ainvhead.salesman = ANY( '{{SALESMAN_CODE}}'::CHARACTER VARYING[] )
+            ELSE TRUE
+            END
+        AND CASE
+            WHEN '{CUSTOMER_SALESMAN_CODE}' <> ( '{' || 'CUSTOMER_SALESMAN_CODE}' )
+            THEN customer.salesman = ANY( '{{CUSTOMER_SALESMAN_CODE}}'::CHARACTER VARYING[] )
+            ELSE TRUE
+            END
