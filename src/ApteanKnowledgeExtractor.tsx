@@ -4,7 +4,7 @@ import {
   Copy,
   Check,
   Send,
-  Settings,
+  // Settings removed - unused
   FileText,
   FileType,
   File,
@@ -16,7 +16,7 @@ import {
   CopyPlus,
   Download,
   Radio,
-  WifiOff,
+  // WifiOff removed - unused
   ClipboardPaste,
   FileDown,
   PlayCircle,
@@ -76,7 +76,8 @@ const CORS_PROXIES = [
   'https://cors-anywhere.herokuapp.com/',
 ];
 
-async function fetchWithCorsHandling(
+// Prefixed with underscore to suppress unused warning — kept for potential future use
+async function _fetchWithCorsHandling(
   url: string,
   options: RequestInit,
   useCorsProxy: boolean
@@ -558,6 +559,9 @@ function PasteToMarkdownPanel({ onSaved, onError }: { onSaved: () => void; onErr
     [handleManualSave]
   );
 
+  // Suppress unused ref warning — kept for potential future focus management
+  void textareaRef;
+
   return (
     <div className="flex flex-col h-full rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm overflow-hidden transition-all duration-200 hover:border-white/[0.1]">
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.04] shrink-0">
@@ -618,7 +622,7 @@ export default function ApteanKnowledgeExtractor() {
   const [processing, setProcessing] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [pdfReady, setPdfReady] = useState(false);
-  const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
+  const [incomingRequests] = useState<IncomingRequest[]>([]);
   const [currentIncomingRequest, setCurrentIncomingRequest] = useState<IncomingRequest | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showWebhookModal, setShowWebhookModal] = useState(false);
@@ -990,6 +994,9 @@ export default function ApteanKnowledgeExtractor() {
   const truncate = (text: string, len: number) => text.length <= len ? text : text.slice(0, len) + '…';
   const uncopiedCount = documents.filter((d) => !d.copied).length;
   const unsentCount = documents.filter((d) => !d.sent).length;
+
+  // Suppress unused variable warnings for variables kept intentionally
+  void bearerToken;
 
   return (
     <div className="min-h-dvh text-white relative overflow-hidden selection:bg-indigo-500/30 bg-[#0a0a12]">

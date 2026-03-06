@@ -1,6 +1,6 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
-import pg from "../node_modules/@types/pg";
+import pg from "pg";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -11,16 +11,25 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const APTEAN_ENDPOINT = process.env.APTEAN_ENDPOINT || "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
+const APTEAN_ENDPOINT =
+  process.env.APTEAN_ENDPOINT ||
+  "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
 
-const APTEAN_WEBHOOK_URL = process.env.APTEAN_WEBHOOK_URL || "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
+const APTEAN_WEBHOOK_URL =
+  process.env.APTEAN_WEBHOOK_URL ||
+  "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
 
-const APTEAN_API_KEY  = process.env.APTEAN_API_KEY  || "sk-15B4geGcWPAtU6Vh2YedAZnuGhnEiUipO74KAwLOGDE-C2E3O01PIHLI79OMT";
-const APTEAN_COID     = process.env.APTEAN_COID;
+const APTEAN_API_KEY =
+  process.env.APTEAN_API_KEY ||
+  "sk-15B4geGcWPAtU6Vh2YedAZnuGhnEiUipO74KAwLOGDE-C2E3O01PIHLI79OMT";
+const APTEAN_COID = process.env.APTEAN_COID;
 
-const APTEAN_TOKEN_URL           = "https://appcentral-int.aptean.com/iam/auth/realms/aptean/protocol/openid-connect/token";
-const APTEAN_TOKEN_CLIENT_ID     = process.env.APTEAN_CLIENT_ID     || "PXK96UTIIQ7935FP1-SERVICE";
-const APTEAN_TOKEN_CLIENT_SECRET = process.env.APTEAN_CLIENT_SECRET || "xdNBlj3EAecKALhoH8Af3sSwScOxpn7u";
+const APTEAN_TOKEN_URL =
+  "https://appcentral-int.aptean.com/iam/auth/realms/aptean/protocol/openid-connect/token";
+const APTEAN_TOKEN_CLIENT_ID =
+  process.env.APTEAN_CLIENT_ID || "PXK96UTIIQ7935FP1-SERVICE";
+const APTEAN_TOKEN_CLIENT_SECRET =
+  process.env.APTEAN_CLIENT_SECRET || "xdNBlj3EAecKALhoH8Af3sSwScOxpn7u";
 
 // ── Token state ───────────────────────────────────────────────────────────────
 let currentBearerToken: string = "";
@@ -32,21 +41,23 @@ async function refreshToken(): Promise<void> {
   console.log("🔄 Refreshing Aptean token...");
 
   const params = new URLSearchParams({
-    client_id:     APTEAN_TOKEN_CLIENT_ID,
+    client_id: APTEAN_TOKEN_CLIENT_ID,
     client_secret: APTEAN_TOKEN_CLIENT_SECRET,
-    grant_type:    "client_credentials",
+    grant_type: "client_credentials",
   });
 
   const res = await fetch(APTEAN_TOKEN_URL, {
-    method:  "POST",
+    method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body:    params.toString(),
+    body: params.toString(),
   });
 
   const rawText = await res.text();
 
   if (!res.ok) {
-    throw new Error(`Token fetch failed ${res.status}: ${rawText.slice(0, 300)}`);
+    throw new Error(
+      `Token fetch failed ${res.status}: ${rawText.slice(0, 300)}`
+    );
   }
 
   let data: any;
@@ -57,7 +68,9 @@ async function refreshToken(): Promise<void> {
   }
 
   if (!data.access_token) {
-    throw new Error(`No access_token in response: ${JSON.stringify(data).slice(0, 200)}`);
+    throw new Error(
+      `No access_token in response: ${JSON.stringify(data).slice(0, 200)}`
+    );
   }
 
   currentBearerToken = data.access_token;
@@ -66,14 +79,18 @@ async function refreshToken(): Promise<void> {
   const expiresIn = (data.expires_in ?? 1800) - 120;
   tokenExpiresAt = Date.now() + expiresIn * 1000;
 
-  console.log(`✅ Token refreshed — valid for ${data.expires_in}s (refresh in ${expiresIn}s)`);
-  console.log(`   Preview: ${currentBearerToken.slice(0, 20)}...${currentBearerToken.slice(-10)}`);
+  console.log(
+    `✅ Token refreshed — valid for ${data.expires_in}s (refresh in ${expiresIn}s)`
+  );
+  console.log(
+    `   Preview: ${currentBearerToken.slice(0, 20)}...${currentBearerToken.slice(-10)}`
+  );
 }
 
 // Prevent concurrent refresh calls (token stampede guard)
 async function ensureValidToken(): Promise<void> {
   const isExpired = Date.now() >= tokenExpiresAt;
-  const isEmpty   = !currentBearerToken;
+  const isEmpty = !currentBearerToken;
 
   if (!isEmpty && !isExpired) return;
 
@@ -111,13 +128,13 @@ function getPool(config: {
 }): pg.Pool {
   if (pool) pool.end();
   pool = new Pool({
-    host:                   config.host,
-    port:                   parseInt(config.port),
-    database:               config.database,
-    user:                   config.user,
-    password:               config.password,
-    max:                    5,
-    idleTimeoutMillis:      30000,
+    host: config.host,
+    port: parseInt(config.port),
+    database: config.database,
+    user: config.user,
+    password: config.password,
+    max: 5,
+    idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
   });
   return pool;
@@ -159,11 +176,14 @@ function extractTextFromApteanResponse(json: any): string {
   if (typeof json === "string") return json;
 
   // Path 1
-  const p1 = json?.outputs?.[0]?.outputs?.[0]?.results?.output_value?.response?.text;
+  const p1 =
+    json?.outputs?.[0]?.outputs?.[0]?.results?.output_value?.response?.text;
   if (p1 && typeof p1 === "string") return p1;
 
   // Path 2
-  const p2 = json?.outputs?.[0]?.outputs?.[0]?.results?.output_value?.structured_response?.data?.content;
+  const p2 =
+    json?.outputs?.[0]?.outputs?.[0]?.results?.output_value
+      ?.structured_response?.data?.content;
   if (p2 && typeof p2 === "string") return p2;
 
   // Path 3 — matches the actual curl response structure
@@ -203,7 +223,8 @@ function extractTextFromApteanResponse(json: any): string {
         const ovText = inner?.results?.output_value?.response?.text;
         if (ovText && typeof ovText === "string") return ovText;
 
-        const ovContent = inner?.results?.output_value?.structured_response?.data?.content;
+        const ovContent =
+          inner?.results?.output_value?.structured_response?.data?.content;
         if (ovContent && typeof ovContent === "string") return ovContent;
 
         // content_blocks on output_value
@@ -211,7 +232,8 @@ function extractTextFromApteanResponse(json: any): string {
         if (Array.isArray(blocks)) {
           for (const block of blocks) {
             for (const content of block?.contents ?? []) {
-              if (content?.text && typeof content.text === "string") return content.text;
+              if (content?.text && typeof content.text === "string")
+                return content.text;
             }
           }
         }
@@ -221,7 +243,8 @@ function extractTextFromApteanResponse(json: any): string {
         if (Array.isArray(msgBlocks)) {
           for (const block of msgBlocks) {
             for (const content of block?.contents ?? []) {
-              if (content?.text && typeof content.text === "string") return content.text;
+              if (content?.text && typeof content.text === "string")
+                return content.text;
             }
           }
         }
@@ -229,8 +252,9 @@ function extractTextFromApteanResponse(json: any): string {
         if (inner?.results?.message?.text) return inner.results.message.text;
 
         for (const msg of inner?.messages ?? []) {
-          if (msg?.message && typeof msg.message === "string") return msg.message;
-          if (msg?.text   && typeof msg.text    === "string") return msg.text;
+          if (msg?.message && typeof msg.message === "string")
+            return msg.message;
+          if (msg?.text && typeof msg.text === "string") return msg.text;
         }
 
         if (inner?.artifacts?.message) return inner.artifacts.message;
@@ -246,26 +270,28 @@ function extractTextFromApteanResponse(json: any): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", (_req: Request, res: Response) => {
   const msRemaining = tokenExpiresAt - Date.now();
 
   res.json({
     ok: true,
     timestamp: new Date().toISOString(),
     token: {
-      hasToken:        !!currentBearerToken,
-      isExpired:       Date.now() >= tokenExpiresAt,
-      expiresAt:       tokenExpiresAt ? new Date(tokenExpiresAt).toISOString() : null,
+      hasToken: !!currentBearerToken,
+      isExpired: Date.now() >= tokenExpiresAt,
+      expiresAt: tokenExpiresAt
+        ? new Date(tokenExpiresAt).toISOString()
+        : null,
       secondsRemaining: Math.max(0, Math.floor(msRemaining / 1000)),
       preview: currentBearerToken
         ? `${currentBearerToken.slice(0, 20)}...${currentBearerToken.slice(-10)}`
         : "(none)",
     },
     config: {
-      endpoint:   APTEAN_ENDPOINT,
+      endpoint: APTEAN_ENDPOINT,
       webhookUrl: APTEAN_WEBHOOK_URL,
-      coid:       APTEAN_COID,
-      hasApiKey:  !!APTEAN_API_KEY,
+      coid: APTEAN_COID,
+      hasApiKey: !!APTEAN_API_KEY,
     },
     routes: [
       "GET  /api/health",
@@ -280,7 +306,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // ── Token endpoint ────────────────────────────────────────────────────────────
-app.post("/api/token", async (_req, res) => {
+app.post("/api/token", async (_req: Request, res: Response) => {
   console.log("\n=== POST /api/token ===");
 
   try {
@@ -291,11 +317,12 @@ app.post("/api/token", async (_req, res) => {
     console.log("✓ Token refreshed via /api/token");
 
     res.json({
-      success:      true,
+      success: true,
       access_token: currentBearerToken,
-      token_type:   "Bearer",
-      expires_at:   new Date(tokenExpiresAt).toISOString(),
-      message:      "Token refreshed — all subsequent API calls will use this token",
+      token_type: "Bearer",
+      expires_at: new Date(tokenExpiresAt).toISOString(),
+      message:
+        "Token refreshed — all subsequent API calls will use this token",
     });
   } catch (err) {
     console.error("❌ /api/token error:", err);
@@ -306,26 +333,27 @@ app.post("/api/token", async (_req, res) => {
 });
 
 // ── Aptean chat ───────────────────────────────────────────────────────────────
-app.post("/api/aptean/chat", async (req, res) => {
+app.post("/api/aptean/chat", async (req: Request, res: Response) => {
   console.log("\n=== POST /api/aptean/chat ===");
 
   const { input_value } = req.body;
   if (!input_value?.trim()) {
-    return res.status(400).json({ error: "No input_value provided" });
+    res.status(400).json({ error: "No input_value provided" });
+    return;
   }
 
   try {
-    await ensureValidToken(); // ← auto-refresh before every call
+    await ensureValidToken();
 
     console.log("→ input_value:", input_value.slice(0, 100));
     console.log("→ token preview:", currentBearerToken.slice(0, 20) + "...");
 
     const apteanRes = await fetch(APTEAN_ENDPOINT, {
-      method:  "POST",
+      method: "POST",
       headers: getApteanHeaders(),
-      body:    JSON.stringify({
+      body: JSON.stringify({
         output_type: "chat",
-        input_type:  "chat",
+        input_type: "chat",
         input_value,
       }),
     });
@@ -338,14 +366,16 @@ app.post("/api/aptean/chat", async (req, res) => {
       if (apteanRes.status === 401 || apteanRes.status === 403) {
         // Force a refresh on next call
         tokenExpiresAt = 0;
-        return res.status(apteanRes.status).json({
+        res.status(apteanRes.status).json({
           error: `Authentication failed (${apteanRes.status}). Retrying token on next request.`,
           details: rawText.slice(0, 300),
         });
+        return;
       }
-      return res.status(apteanRes.status).json({
+      res.status(apteanRes.status).json({
         error: `Aptean error ${apteanRes.status}: ${rawText.slice(0, 300)}`,
       });
+      return;
     }
 
     const json = JSON.parse(rawText);
@@ -361,9 +391,9 @@ app.post("/api/aptean/chat", async (req, res) => {
 });
 
 // ── DB connect ────────────────────────────────────────────────────────────────
-app.post("/api/connect", async (req, res) => {
+app.post("/api/connect", async (req: Request, res: Response) => {
   try {
-    const p      = getPool(req.body);
+    const p = getPool(req.body);
     const client = await p.connect();
     const { rows } = await client.query(
       `SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename`
@@ -371,74 +401,76 @@ app.post("/api/connect", async (req, res) => {
     client.release();
     res.json({
       connected: true,
-      tables:    rows.map((r: { tablename: string }) => r.tablename),
+      tables: rows.map((r: { tablename: string }) => r.tablename),
     });
   } catch (err) {
     res.json({
       connected: false,
-      tables:    [],
-      error:     err instanceof Error ? err.message : "Connection failed",
+      tables: [],
+      error: err instanceof Error ? err.message : "Connection failed",
     });
   }
 });
 
 // ── DB query ──────────────────────────────────────────────────────────────────
-app.post("/api/query", async (req, res) => {
+app.post("/api/query", async (req: Request, res: Response) => {
   const { sql, dbConfig } = req.body;
   const cleanSql = sanitizeSQL(sql ?? "");
 
   if (!cleanSql) {
-    return res.status(400).json({ success: false, error: "No SQL provided" });
+    res.status(400).json({ success: false, error: "No SQL provided" });
+    return;
   }
 
   try {
-    const p     = getPool(dbConfig);
+    const p = getPool(dbConfig);
     const start = Date.now();
     const result = await p.query(cleanSql);
 
     res.json({
-      success:  true,
-      data:     result.rows || [],
-      columns:  result.fields?.map((f: pg.FieldDef) => f.name) || [],
+      success: true,
+      data: result.rows || [],
+      columns: result.fields?.map((f: pg.FieldDef) => f.name) || [],
       rowCount: result.rowCount ?? 0,
-      command:  result.command,
+      command: result.command,
       duration: Date.now() - start,
     });
   } catch (err) {
     res.status(400).json({
       success: false,
-      error:   err instanceof Error ? err.message : "Query failed",
+      error: err instanceof Error ? err.message : "Query failed",
     });
   }
 });
 
 // ── Webhook Query (Natural Language → SQL) ────────────────────────────────────
-app.post("/api/webhook/query", async (req, res) => {
+app.post("/api/webhook/query", async (req: Request, res: Response) => {
   console.log("\n=== POST /api/webhook/query ===");
 
   const { input_value, webhook_url } = req.body;
 
   if (!input_value?.trim()) {
-    return res.status(400).json({ error: "No input_value provided" });
+    res.status(400).json({ error: "No input_value provided" });
+    return;
   }
 
   const targetUrl = webhook_url || APTEAN_WEBHOOK_URL;
 
   try {
-    await ensureValidToken(); // ← auto-refresh before every call
+    await ensureValidToken();
 
     console.log("→ URL:", targetUrl);
     console.log("→ input_value:", input_value.slice(0, 200));
     console.log("→ token preview:", currentBearerToken.slice(0, 20) + "...");
 
     const response = await fetch(targetUrl, {
-      method:  "POST",
+      method: "POST",
       headers: getApteanHeaders(),
-      body:    JSON.stringify({
+      body: JSON.stringify({
         input_value,
         output_type: "chat",
-        input_type:  "chat",
-        tweaks:      {},
+        input_type: "chat",
+        tweaks: {},
       }),
     });
 
@@ -449,13 +481,15 @@ app.post("/api/webhook/query", async (req, res) => {
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
         tokenExpiresAt = 0; // force refresh next time
-        return res.status(response.status).json({
+        res.status(response.status).json({
           error: `Authentication failed (${response.status}). Token invalidated — will refresh on next request.`,
         });
+        return;
       }
-      return res.status(response.status).json({
+      res.status(response.status).json({
         error: `Webhook returned ${response.status}: ${rawText.slice(0, 300)}`,
       });
+      return;
     }
 
     let responseData: any;
@@ -466,7 +500,7 @@ app.post("/api/webhook/query", async (req, res) => {
     }
 
     const rawExtracted = extractTextFromApteanResponse(responseData);
-    const text         = sanitizeSQL(rawExtracted);
+    const text = sanitizeSQL(rawExtracted);
 
     console.log("✓ Extracted:", rawExtracted.slice(0, 200));
     console.log("✓ Sanitized:", text.slice(0, 200));
@@ -481,26 +515,30 @@ app.post("/api/webhook/query", async (req, res) => {
 });
 
 // ── Webhook (Knowledge Extractor) ─────────────────────────────────────────────
-app.post("/api/webhook", async (req, res) => {
+app.post("/api/webhook", async (req: Request, res: Response) => {
   console.log("\n=== POST /api/webhook ===");
 
-  const { queryResult, metadata, source = "knowledge-extractor" } = req.body;
+  const {
+    queryResult,
+    metadata,
+    source = "knowledge-extractor",
+  } = req.body;
 
   try {
-    await ensureValidToken(); // ← auto-refresh before every call
+    await ensureValidToken();
 
-    const columns: string[]                    = metadata?.columns || [];
-    const data: Record<string, unknown>[]      = queryResult?.data || [];
+    const columns: string[] = metadata?.columns || [];
+    const data: Record<string, unknown>[] = queryResult?.data || [];
 
     // Build the input_value string sent to the AI
     const lines: string[] = [
       `Source: ${metadata?.source || source}`,
-      `Query: ${metadata?.query   || ""}`,
-      `SQL: ${metadata?.sql       || ""}`,
+      `Query: ${metadata?.query || ""}`,
+      `SQL: ${metadata?.sql || ""}`,
       `Command: ${metadata?.command || ""}`,
       `Row Count: ${metadata?.rowCount ?? data.length}`,
-      `Duration: ${metadata?.duration  ?? 0}ms`,
-      `Timestamp: ${metadata?.sentAt   || new Date().toISOString()}`,
+      `Duration: ${metadata?.duration ?? 0}ms`,
+      `Timestamp: ${metadata?.sentAt || new Date().toISOString()}`,
     ];
 
     if (metadata?.filename) lines.push(`Filename: ${metadata.filename}`);
@@ -513,12 +551,14 @@ app.post("/api/webhook", async (req, res) => {
       lines.push(columns.map(() => "---").join(" | "));
       for (const row of data) {
         lines.push(
-          columns.map((col) => {
-            const v = row[col];
-            if (v === null || v === undefined) return "NULL";
-            if (typeof v === "object")          return JSON.stringify(v);
-            return String(v);
-          }).join(" | ")
+          columns
+            .map((col) => {
+              const v = row[col];
+              if (v === null || v === undefined) return "NULL";
+              if (typeof v === "object") return JSON.stringify(v);
+              return String(v);
+            })
+            .join(" | ")
         );
       }
     } else if (data.length > 0) {
@@ -536,11 +576,11 @@ app.post("/api/webhook", async (req, res) => {
     console.log("→ header keys:", Object.keys(getApteanHeaders()));
 
     const response = await fetch(APTEAN_ENDPOINT, {
-      method:  "POST",
+      method: "POST",
       headers: getApteanHeaders(),
-      body:    JSON.stringify({
+      body: JSON.stringify({
         output_type: "chat",
-        input_type:  "chat",
+        input_type: "chat",
         input_value,
       }),
     });
@@ -559,17 +599,19 @@ app.post("/api/webhook", async (req, res) => {
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
         tokenExpiresAt = 0; // force refresh next time
-        return res.status(response.status).json({
+        res.status(response.status).json({
           success: false,
-          error:   `Authentication failed (${response.status}). Token invalidated — will refresh on next request.`,
+          error: `Authentication failed (${response.status}). Token invalidated — will refresh on next request.`,
           details: responseData,
         });
+        return;
       }
-      return res.status(response.status).json({
+      res.status(response.status).json({
         success: false,
-        error:   `Aptean returned ${response.status}: ${response.statusText}`,
+        error: `Aptean returned ${response.status}: ${response.statusText}`,
         details: responseData,
       });
+      return;
     }
 
     const json = responseData as any;
@@ -579,14 +621,14 @@ app.post("/api/webhook", async (req, res) => {
     console.log("✓ Extracted text preview:", String(text).slice(0, 200));
 
     res.json({
-      success:         true,
-      webhookStatus:   response.status,
+      success: true,
+      webhookStatus: response.status,
       text,
       webhookResponse: responseData,
       _debug: {
         apteanResponseStructure: {
-          hasOutputs:      !!json?.outputs,
-          outputsLength:   json?.outputs?.length,
+          hasOutputs: !!json?.outputs,
+          outputsLength: json?.outputs?.length,
           firstOutputKeys: Object.keys(json?.outputs?.[0] || {}).slice(0, 5),
         },
       },
@@ -595,7 +637,7 @@ app.post("/api/webhook", async (req, res) => {
     console.error("❌ /api/webhook error:", err);
     res.status(500).json({
       success: false,
-      error:   err instanceof Error ? err.message : "Webhook failed",
+      error: err instanceof Error ? err.message : "Webhook failed",
     });
   }
 });
