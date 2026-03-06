@@ -68,57 +68,6 @@ interface BatchSendState {
   skipped: number;
 }
 
-// ─── CORS Proxy helpers ───────────────────────────────────────────────────────
-
-const CORS_PROXIES = [
-  'https://corsproxy.io/?',
-  'https://api.allorigins.win/raw?url=',
-  'https://cors-anywhere.herokuapp.com/',
-];
-
-// Prefixed with underscore to suppress unused warning — kept for potential future use
-async function _fetchWithCorsHandling(
-  url: string,
-  options: RequestInit,
-  useCorsProxy: boolean
-): Promise<Response> {
-  if (!useCorsProxy) {
-    try {
-      const response = await fetch(url, options);
-      return response;
-    } catch (error: any) {
-      if (error.message?.includes('CORS') || error.message?.includes('Failed to fetch')) {
-        console.log('Direct request failed, trying with CORS proxy...');
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  for (const proxy of CORS_PROXIES) {
-    try {
-      const proxyUrl = `${proxy}${encodeURIComponent(url)}`;
-      const response = await fetch(proxyUrl, {
-        ...options,
-        credentials: 'omit',
-      });
-      return response;
-    } catch (error) {
-      console.log(`Proxy ${proxy} failed, trying next...`);
-      continue;
-    }
-  }
-
-  try {
-    await fetch(url, {
-      ...options,
-      mode: 'no-cors',
-    });
-    return new Response(null, { status: 200, statusText: 'OK (no-cors mode)' });
-  } catch (error) {
-    throw new Error('All request methods failed. Check the endpoint URL.');
-  }
-}
 
 // ─── Utility: Clean whitespace and special characters ─────────────────────────
 

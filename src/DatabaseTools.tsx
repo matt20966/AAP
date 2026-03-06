@@ -35,14 +35,6 @@ interface QueryResult {
   duration?: number;
 }
 
-interface QueryHistoryItem {
-  id: string;
-  query: string;
-  sql: string;
-  result: QueryResult | null;
-  timestamp: Date;
-  webhookResponse?: string;
-}
 
 interface ModalState {
   isOpen: boolean;
@@ -2130,20 +2122,6 @@ const MainPage: React.FC<MainPageProps> = ({
           fullWebhookResponse: text,
         }));
       }
-
-      setHistory((prev) =>
-        [
-          {
-            id: crypto.randomUUID(),
-            query,
-            sql: sql || "",
-            result: null,
-            timestamp: new Date(),
-            webhookResponse: text,
-          },
-          ...prev,
-        ].slice(0, 50)
-      );
     } catch (err) {
       setModal((prev) => ({
         ...prev,
@@ -2169,14 +2147,7 @@ const MainPage: React.FC<MainPageProps> = ({
         queryResult: result,
       }));
 
-      setHistory((prev) => {
-        const updated = [...prev];
-        const idx = updated.findIndex((h) => h.sql === modal.sql);
-        if (idx !== -1) {
-          updated[idx] = { ...updated[idx], result };
-        }
-        return updated;
-      });
+    
     } catch (err) {
       setModal((prev) => ({
         ...prev,
@@ -2327,7 +2298,6 @@ const MainPage: React.FC<MainPageProps> = ({
             <button
               onClick={() => {
                 setShowConfig((p) => !p);
-                setShowHistory(false);
               }}
               className="p-2 rounded-xl transition-colors"
               style={{ color: "rgba(148,163,184,0.55)" }}

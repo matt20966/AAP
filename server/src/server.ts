@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
-import pg from "pg";
+import pg, { Pool as PgPool, FieldDef } from "pg";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -117,7 +117,7 @@ setInterval(() => {
 }, 25 * 60 * 1000);
 
 // ── DB Pool ───────────────────────────────────────────────────────────────────
-let pool: pg.Pool | null = null;
+let pool: PgPool | null = null;
 
 function getPool(config: {
   host: string;
@@ -125,7 +125,7 @@ function getPool(config: {
   database: string;
   user: string;
   password: string;
-}): pg.Pool {
+}): PgPool {
   if (pool) pool.end();
   pool = new Pool({
     host: config.host,
@@ -430,7 +430,7 @@ app.post("/api/query", async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: result.rows || [],
-      columns: result.fields?.map((f: pg.FieldDef) => f.name) || [],
+      columns: result.fields?.map((f: FieldDef) => f.name) || [],
       rowCount: result.rowCount ?? 0,
       command: result.command,
       duration: Date.now() - start,
