@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Routes, Route, Link, useLocation } from "react-router-dom";
+import { Routes, Route, Link} from "react-router-dom";
 import {
   Copy,
   X,
@@ -16,7 +16,6 @@ import {
   Edit3,
   Wrench,
   Save,
-  List,
   Zap,
   GripVertical,
   FileText,
@@ -1575,7 +1574,6 @@ const MCPToolsPage: React.FC<MCPToolsPageProps> = ({
   dbConfig,
   connected,
   checking,
-  onCheckConnection,
 }) => {
   const [tools, setTools] = useState<MCPTool[]>(loadToolsFromStorage);
   const [showEditor, setShowEditor] = useState(false);
@@ -2076,9 +2074,7 @@ const MainPage: React.FC<MainPageProps> = ({
 }) => {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState<QueryHistoryItem[]>([]);
   const [showConfig, setShowConfig] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
 
   const [modal, setModal] = useState<ModalState>({
     isOpen: false,
