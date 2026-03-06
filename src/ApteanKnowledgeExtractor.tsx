@@ -17,11 +17,11 @@ import {
   Download,
   Radio,
   // WifiOff removed - unused
-  ClipboardPaste,
-  FileDown,
   PlayCircle,
   SkipForward,
   RefreshCw,
+  Database,
+  Save,
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -51,6 +51,14 @@ interface IncomingRequest {
   message: string | null;
   type: 'download' | 'text';
   text: string | null;
+}
+
+interface FileDbEntry {
+  id: string;
+  originalFilename: string;
+  newFilename: string;
+  module: string;
+  uploadDate: string; // ISO string
 }
 
 // ─── Batch send state ─────────────────────────────────────────────────────────
@@ -165,12 +173,14 @@ async function extractFromPdf(file: File): Promise<string> {
     data: uint8Array,
     cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
     cMapPacked: true,
+    useSystemFonts: true,
+    standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/',
   });
   const pdf = await loadingTask.promise;
   const pages: string[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
+    const content = await page.getTextContent({ normalizeWhitespace: true });
     let lastY: number | null = null;
     let lastX: number | null = null;
     let lineText = '';
@@ -255,6 +265,20 @@ function saveDocuments(docs: ExtractedDocument[]) {
   localStorage.setItem(STORAGE_DOCS_KEY, JSON.stringify(toSave));
 }
 
+const STORAGE_FILEDB_KEY = 'aptean-extractor-filedb';
+
+function loadFileDb(): FileDbEntry[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_FILEDB_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as FileDbEntry[];
+  } catch { return []; }
+}
+
+function saveFileDb(entries: FileDbEntry[]) {
+  localStorage.setItem(STORAGE_FILEDB_KEY, JSON.stringify(entries));
+}
+
 function loadBearerToken(): string | null {
   try {
     return localStorage.getItem(STORAGE_TOKEN_KEY);
@@ -263,39 +287,6 @@ function loadBearerToken(): string | null {
 
 function saveBearerToken(token: string) {
   localStorage.setItem(STORAGE_TOKEN_KEY, token);
-}
-
-// ─── Save as Markdown helper ──────────────────────────────────────────────────
-
-function triggerMarkdownSave(text: string) {
-  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = '.md';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-async function triggerMarkdownSaveAs(text: string): Promise<boolean> {
-  if ('showSaveFilePicker' in window) {
-    try {
-      const handle = await (window as any).showSaveFilePicker({
-        suggestedName: '.md',
-        types: [{ description: 'Markdown File', accept: { 'text/markdown': ['.md'] } }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(text);
-      await writable.close();
-      return true;
-    } catch (err: any) {
-      if (err.name === 'AbortError') return false;
-    }
-  }
-  triggerMarkdownSave(text);
-  return true;
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -465,96 +456,129 @@ function IncomingRequestModal({ request, onClose, onAction }: { request: Incomin
   );
 }
 
-// ─── Paste-to-Markdown Panel ──────────────────────────────────────────────────
+// ─── File Database Modal ──────────────────────────────────────────────────
 
-function PasteToMarkdownPanel({ onSaved, onError }: { onSaved: () => void; onError: (msg: string) => void }) {
-  const [pasteText, setPasteText] = useState('');
-  const [saving, setSaving] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+function FileDatabaseModal({ entries, onUpdate, onClose }: {
+  entries: FileDbEntry[];
+  onUpdate: (entries: FileDbEntry[]) => void;
+  onClose: () => void;
+}) {
+  const [localEntries, setLocalEntries] = useState<FileDbEntry[]>(entries);
 
-  const handlePaste = useCallback(
-    async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      const clipboardText = e.clipboardData.getData('text/plain');
-      if (!clipboardText.trim()) return;
-      setTimeout(async () => {
-        setSaving(true);
-        try {
-          const success = await triggerMarkdownSaveAs(clipboardText.trim());
-          if (success) { onSaved(); setPasteText(''); }
-        } catch (err: any) { onError(err.message || 'Failed to save markdown file'); }
-        finally { setSaving(false); }
-      }, 50);
-    },
-    [onSaved, onError]
-  );
+  const handleFieldChange = (id: string, field: 'newFilename' | 'module', value: string) => {
+    setLocalEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
 
-  const handleManualSave = useCallback(async () => {
-    if (!pasteText.trim()) return;
-    setSaving(true);
-    try {
-      const success = await triggerMarkdownSaveAs(pasteText.trim());
-      if (success) { onSaved(); setPasteText(''); }
-    } catch (err: any) { onError(err.message || 'Failed to save markdown file'); }
-    finally { setSaving(false); }
-  }, [pasteText, onSaved, onError]);
+  const handleSave = () => {
+    onUpdate(localEntries);
+    onClose();
+  };
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleManualSave(); }
-    },
-    [handleManualSave]
-  );
-
-  // Suppress unused ref warning — kept for potential future focus management
-  void textareaRef;
+  const handleDelete = (id: string) => {
+    setLocalEntries((prev) => prev.filter((e) => e.id !== id));
+  };
 
   return (
-    <div className="flex flex-col h-full rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm overflow-hidden transition-all duration-200 hover:border-white/[0.1]">
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.04] shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-violet-500/10 ring-1 ring-violet-500/15 flex items-center justify-center">
-            <ClipboardPaste className="w-4 h-4 text-violet-400" />
-          </div>
-          <div>
-            <h3 className="text-[13px] font-semibold text-white/70">Paste to Markdown</h3>
-            <p className="text-[11px] text-white/25">Paste text — instantly save as .md</p>
-          </div>
-        </div>
-        {pasteText.trim() && (
-          <button onClick={handleManualSave} disabled={saving} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-violet-500/80 hover:bg-violet-500 transition-all duration-150 shadow-lg shadow-violet-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-wait">
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
-            Save .md
-          </button>
-        )}
-      </div>
-
-      <div className="relative flex-1 min-h-0">
-        <textarea
-          ref={textareaRef}
-          value={pasteText}
-          onChange={(e) => setPasteText(e.target.value)}
-          onPaste={handlePaste}
-          onKeyDown={handleKeyDown}
-          placeholder="Paste text here (Ctrl/Cmd+V)&#10;&#10;File save dialog opens immediately…"
-          className="w-full h-full px-4 py-3.5 text-sm text-white/80 bg-transparent border-none resize-none focus:outline-none placeholder-white/15 leading-relaxed"
-        />
-        {saving && (
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center">
-            <div className="flex items-center gap-2.5 text-sm text-violet-300 font-medium">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Opening save dialog…
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-200" onClick={onClose} />
+      <div className="relative bg-[#111118] border border-white/[0.08] rounded-3xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 shadow-black/50">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-white/[0.06] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 ring-1 ring-indigo-500/20 flex items-center justify-center">
+              <Database className="w-5 h-5 text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="text-[15px] font-semibold text-white/90">File Database</h3>
+              <p className="text-xs text-white/35 mt-0.5">{localEntries.length} file(s) tracked</p>
             </div>
           </div>
-        )}
-      </div>
+          <button onClick={onClose} className="p-2 rounded-xl text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-all duration-150">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-      <div className="px-4 py-2.5 border-t border-white/[0.03] flex items-center justify-between shrink-0">
-        <span className="text-[11px] text-white/15">
-          {pasteText.length > 0 ? `${pasteText.length.toLocaleString()} chars` : 'Waiting for paste…'}
-        </span>
-        <span className="text-[11px] text-white/15">
-          {pasteText.trim() ? '⌘/Ctrl+Enter to save' : '⌘/Ctrl+V to paste'}
-        </span>
+        {/* Table */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {localEntries.length === 0 ? (
+            <div className="text-center py-16">
+              <Database className="w-10 h-10 text-white/10 mx-auto mb-3" />
+              <p className="text-sm text-white/25">No files uploaded yet</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-white/30 border-b border-white/[0.06]">
+                  <th className="pb-3 pr-3 font-semibold">Original Filename</th>
+                  <th className="pb-3 pr-3 font-semibold">New File Name</th>
+                  <th className="pb-3 pr-3 font-semibold">Module</th>
+                  <th className="pb-3 pr-3 font-semibold">Upload Date</th>
+                  <th className="pb-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {localEntries.map((entry) => (
+                  <tr key={entry.id} className="border-b border-white/[0.04] group hover:bg-white/[0.02] transition-colors">
+                    <td className="py-3 pr-3">
+                      <span className="text-white/60 text-[13px] truncate block max-w-[200px]" title={entry.originalFilename}>
+                        {entry.originalFilename}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-3">
+                      <input
+                        type="text"
+                        value={entry.newFilename}
+                        onChange={(e) => handleFieldChange(entry.id, 'newFilename', e.target.value)}
+                        placeholder="Enter new name…"
+                        className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-[13px] text-white/80 placeholder:text-white/15 focus:outline-none focus:border-indigo-500/40 focus:bg-white/[0.06] transition-all"
+                      />
+                    </td>
+                    <td className="py-3 pr-3">
+                      <input
+                        type="text"
+                        value={entry.module}
+                        onChange={(e) => handleFieldChange(entry.id, 'module', e.target.value)}
+                        placeholder="Enter module…"
+                        className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-[13px] text-white/80 placeholder:text-white/15 focus:outline-none focus:border-indigo-500/40 focus:bg-white/[0.06] transition-all"
+                      />
+                    </td>
+                    <td className="py-3 pr-3">
+                      <span className="text-white/30 text-[12px] whitespace-nowrap">
+                        {new Date(entry.uploadDate).toLocaleDateString()} {new Date(entry.uploadDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      <button
+                        onClick={() => handleDelete(entry.id)}
+                        className="p-1.5 rounded-lg text-white/10 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
+                        title="Remove from database"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2.5 p-6 border-t border-white/[0.06] shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 text-sm font-medium text-white/50 bg-white/[0.04] border border-white/[0.06] rounded-xl hover:bg-white/[0.08] transition-all duration-150"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2.5 text-sm font-semibold text-white bg-indigo-500/80 rounded-xl hover:bg-indigo-500 transition-all duration-150 shadow-lg shadow-indigo-500/20 flex items-center gap-2"
+          >
+            <Save className="w-4 h-4" />
+            Save Changes
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -575,6 +599,8 @@ export default function ApteanKnowledgeExtractor() {
   const [webhookResponse, setWebhookResponse] = useState<any>(null);
   const [resettingToken, setResettingToken] = useState(false);
   const [bearerToken, setBearerToken] = useState<string | null>(loadBearerToken);
+  const [fileDbEntries, setFileDbEntries] = useState<FileDbEntry[]>(loadFileDb);
+  const [showFileDbModal, setShowFileDbModal] = useState(false);
 
   const WEBHOOK_TIMEOUT = 420000;
 
@@ -596,6 +622,7 @@ export default function ApteanKnowledgeExtractor() {
   useEffect(() => { const timer = setTimeout(() => setMounted(true), 50); return () => clearTimeout(timer); }, []);
   useEffect(() => { loadPdfJs().then(() => setPdfReady(true)).catch((err) => console.warn('PDF.js preload failed:', err)); }, []);
   useEffect(() => { saveDocuments(documents); }, [documents]);
+  useEffect(() => { saveFileDb(fileDbEntries); }, [fileDbEntries]);
 
 const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
     const id = generateId();
@@ -651,7 +678,17 @@ const handleResetBearerToken = useCallback(async () => {
     const extractedTexts: string[] = [];
     for (const file of valid) {
       try {
-        const text = await extractText(file);
+        let text = await extractText(file);
+        // Retry once if extraction returned empty (common with some PDFs)
+        if (text.trim().length === 0) {
+          console.warn(`Empty extraction for "${file.name}", retrying...`);
+          text = await extractText(file);
+        }
+        if (text.trim().length === 0) {
+          addToast(`"${file.name}" extracted 0 characters — file may be scanned/image-based or empty`, 'error');
+          newDocs.push({ id: generateId(), filename: file.name, fileType: getFileTypeLabel(file.name), text: '', timestamp: Date.now(), copied: false, sent: false, sending: false, error: 'Extracted 0 characters' });
+          continue;
+        }
         extractedTexts.push(text);
         newDocs.push({ id: generateId(), filename: file.name, fileType: getFileTypeLabel(file.name), text, timestamp: Date.now(), copied: true, sent: false, sending: false });
       } catch (err: any) { console.error('Extraction error:', err); addToast(`Failed: "${file.name}" — ${err.message || 'Unknown error'}`, 'error'); }
@@ -660,6 +697,15 @@ const handleResetBearerToken = useCallback(async () => {
       const combinedText = extractedTexts.join('\n\n');
       const copySuccess = await copyToClipboard(combinedText);
       setDocuments((prev) => [...newDocs, ...prev]);
+      // Add entries to file database
+      const newDbEntries: FileDbEntry[] = newDocs.map((doc) => ({
+        id: doc.id,
+        originalFilename: doc.filename,
+        newFilename: '',
+        module: '',
+        uploadDate: new Date(doc.timestamp).toISOString(),
+      }));
+      setFileDbEntries((prev) => [...newDbEntries, ...prev]);
       if (copySuccess) addToast(`${newDocs.length} document(s) processed & copied to clipboard`, 'success');
       else addToast(`${newDocs.length} document(s) processed (clipboard copy failed)`, 'success');
     }
@@ -796,8 +842,8 @@ const handleResetBearerToken = useCallback(async () => {
   // ─── Batch send all unsent docs ─────────────────────────────────────────────
 
   const handleSendAll = useCallback(async () => {
-    const unsent = documents.filter((d) => !d.sent && !d.sending);
-    if (unsent.length === 0) { addToast('No unsent documents', 'error'); return; }
+    const unsent = documents.filter((d) => !d.sent && !d.sending && d.text.length > 0);
+    if (unsent.length === 0) { addToast('No unsent documents (0-character docs are skipped)', 'error'); return; }
 
     batchAbortRef.current = false;
     setBatchSend({ active: true, total: unsent.length, current: 0, currentFilename: '', succeeded: 0, failed: 0, skipped: 0 });
@@ -917,7 +963,7 @@ const handleResetBearerToken = useCallback(async () => {
 
   const truncate = (text: string, len: number) => text.length <= len ? text : text.slice(0, len) + '…';
   const uncopiedCount = documents.filter((d) => !d.copied).length;
-  const unsentCount = documents.filter((d) => !d.sent).length;
+  const unsentCount = documents.filter((d) => !d.sent && d.text.length > 0).length;
 
   // Suppress unused variable warnings for variables kept intentionally
   void bearerToken;
@@ -937,6 +983,19 @@ const handleResetBearerToken = useCallback(async () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* File Database Button */}
+            <button
+              onClick={() => setShowFileDbModal(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 active:scale-95 border bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20 hover:border-indigo-500/30 hover:text-indigo-300"
+              title="File Database"
+              aria-label="File Database"
+            >
+              <Database className="w-4 h-4" />
+              <span className="hidden sm:inline">File DB</span>
+              {fileDbEntries.length > 0 && (
+                <span className="ml-0.5 text-[10px] bg-indigo-500/20 px-1.5 py-0.5 rounded-md">{fileDbEntries.length}</span>
+              )}
+            </button>
             {/* Bearer Token Status */}
             {bearerToken && (
               <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -966,59 +1025,48 @@ const handleResetBearerToken = useCallback(async () => {
           </div>
         </header>
 
-        {/* Drop Zone + Paste to Markdown */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-          {/* Left: Drop Zone */}
-          <div className="flex flex-col">
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => filesOnlyInputRef.current?.click()}
-              role="button"
-              tabIndex={0}
-              aria-label="Upload files by clicking or dropping"
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); filesOnlyInputRef.current?.click(); } }}
-              className={`relative cursor-pointer rounded-2xl border-2 border-dashed transition-all duration-200 backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a12] flex-1 min-h-[220px] flex items-center justify-center ${
-                isDragOver ? 'border-indigo-400/50 bg-indigo-500/[0.08] scale-[1.005] shadow-lg shadow-indigo-500/5' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.14] hover:bg-white/[0.04]'
-              } ${processing ? 'pointer-events-none opacity-50' : ''}`}
-            >
-              <div className="flex flex-col items-center justify-center py-10 sm:py-14 px-6">
-                {processing ? (
-                  <div className="flex flex-col items-center">
-                    <Loader2 className="w-10 h-10 text-indigo-400 animate-spin mb-4" />
-                    <p className="text-sm font-medium text-white/70">Processing files…</p>
-                    <p className="text-xs text-white/25 mt-1.5">Please wait</p>
+        {/* Drop Zone */}
+        <div className="flex flex-col">
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => filesOnlyInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            aria-label="Upload files by clicking or dropping"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); filesOnlyInputRef.current?.click(); } }}
+            className={`relative cursor-pointer rounded-2xl border-2 border-dashed transition-all duration-200 backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a12] flex-1 min-h-[220px] flex items-center justify-center ${
+              isDragOver ? 'border-indigo-400/50 bg-indigo-500/[0.08] scale-[1.005] shadow-lg shadow-indigo-500/5' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.14] hover:bg-white/[0.04]'
+            } ${processing ? 'pointer-events-none opacity-50' : ''}`}
+          >
+            <div className="flex flex-col items-center justify-center py-10 sm:py-14 px-6">
+              {processing ? (
+                <div className="flex flex-col items-center">
+                  <Loader2 className="w-10 h-10 text-indigo-400 animate-spin mb-4" />
+                  <p className="text-sm font-medium text-white/70">Processing files…</p>
+                  <p className="text-xs text-white/25 mt-1.5">Please wait</p>
+                </div>
+              ) : (
+                <>
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-all duration-200 ${isDragOver ? 'bg-indigo-500/15 scale-110' : 'bg-white/[0.04] border border-white/[0.06]'}`}>
+                    <Upload className={`w-6 h-6 transition-colors duration-200 ${isDragOver ? 'text-indigo-400' : 'text-white/25'}`} />
                   </div>
-                ) : (
-                  <>
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-all duration-200 ${isDragOver ? 'bg-indigo-500/15 scale-110' : 'bg-white/[0.04] border border-white/[0.06]'}`}>
-                      <Upload className={`w-6 h-6 transition-colors duration-200 ${isDragOver ? 'text-indigo-400' : 'text-white/25'}`} />
-                    </div>
-                    <p className="text-[15px] font-medium text-white/70">Drop files or folders here</p>
-                    <p className="text-xs text-white/25 mt-2 text-center leading-relaxed max-w-xs">or click to browse · PDF, DOCX, TXT · Auto-copies to clipboard</p>
-                  </>
-                )}
-              </div>
-              <input ref={filesOnlyInputRef} type="file" multiple accept=".pdf,.docx,.txt" onChange={handleFileInput} className="hidden" />
-              <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.txt" onChange={handleFileInput} className="hidden"
-                // @ts-ignore
-                webkitdirectory="" directory=""
-              />
+                  <p className="text-[15px] font-medium text-white/70">Drop files or folders here</p>
+                  <p className="text-xs text-white/25 mt-2 text-center leading-relaxed max-w-xs">or click to browse · PDF, DOCX, TXT · Auto-copies to clipboard</p>
+                </>
+              )}
             </div>
-            <div className="flex gap-3 mt-3 justify-center items-center">
-              <button onClick={() => filesOnlyInputRef.current?.click()} className="text-xs text-white/25 hover:text-white/50 transition-colors duration-150 py-1 px-1">Select files</button>
-              <span className="text-white/10 text-[10px]">·</span>
-              <button onClick={() => fileInputRef.current?.click()} className="text-xs text-white/25 hover:text-white/50 transition-colors duration-150 py-1 px-1">Select folder</button>
-            </div>
-          </div>
-
-          {/* Right: Paste to Markdown */}
-          <div className="min-h-[220px]">
-            <PasteToMarkdownPanel
-              onSaved={() => addToast('Markdown file saved successfully', 'success')}
-              onError={(msg) => addToast(msg, 'error')}
+            <input ref={filesOnlyInputRef} type="file" multiple accept=".pdf,.docx,.txt" onChange={handleFileInput} className="hidden" />
+            <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.txt" onChange={handleFileInput} className="hidden"
+              // @ts-ignore
+              webkitdirectory="" directory=""
             />
+          </div>
+          <div className="flex gap-3 mt-3 justify-center items-center">
+            <button onClick={() => filesOnlyInputRef.current?.click()} className="text-xs text-white/25 hover:text-white/50 transition-colors duration-150 py-1 px-1">Select files</button>
+            <span className="text-white/10 text-[10px]">·</span>
+            <button onClick={() => fileInputRef.current?.click()} className="text-xs text-white/25 hover:text-white/50 transition-colors duration-150 py-1 px-1">Select folder</button>
           </div>
         </div>
 
@@ -1135,26 +1183,28 @@ const handleResetBearerToken = useCallback(async () => {
                             </span>
                           )}
                         </div>
-                        <p className="text-[13px] text-white/20 line-clamp-1 leading-relaxed">{doc.text ? truncate(doc.text, 100) : 'No text extracted'}</p>
+                        <p className={`text-[13px] line-clamp-1 leading-relaxed ${doc.text ? 'text-white/20' : 'text-red-400/50'}`}>{doc.text ? truncate(doc.text, 100) : 'No text extracted — file may be scanned/image-based'}</p>
                         <div className="flex items-center gap-3">
                           <span className="text-[11px] text-white/15">{formatTime(doc.timestamp)}</span>
-                          <span className="text-[11px] text-white/15">{doc.text.length.toLocaleString()} chars</span>
+                          <span className={`text-[11px] ${doc.text.length === 0 ? 'text-red-400/60 font-medium' : 'text-white/15'}`}>{doc.text.length.toLocaleString()} chars</span>
                           {doc.error && <span className="text-[11px] text-red-400/70 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{doc.error}</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                         <button
                           onClick={() => handleCopy(doc.id)}
+                          disabled={doc.text.length === 0}
                           className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150 active:scale-95 ${
-                            doc.copied ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-white/90 text-gray-900 hover:bg-white shadow-sm shadow-white/10'
+                            doc.text.length === 0 ? 'bg-white/[0.03] text-white/15 cursor-not-allowed'
+                            : doc.copied ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-white/90 text-gray-900 hover:bg-white shadow-sm shadow-white/10'
                           }`}
-                          aria-label={doc.copied ? 'Already copied' : 'Copy to clipboard'}
+                          aria-label={doc.text.length === 0 ? 'No text to copy' : doc.copied ? 'Already copied' : 'Copy to clipboard'}
                         >
                           {doc.copied ? <><Check className="w-3.5 h-3.5" /><span className="hidden sm:inline">Copied</span></> : <><Copy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Copy</span></>}
                         </button>
                         <button
                           onClick={() => handlePost(doc.id)}
-                          disabled={doc.sending || batchSend.active}
+                          disabled={doc.sending || batchSend.active || doc.text.length === 0}
                           className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150 border active:scale-95 ${
                             doc.sent ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                             : doc.sending ? 'bg-white/[0.03] text-white/20 border-white/[0.06] cursor-wait'
@@ -1238,6 +1288,14 @@ const handleResetBearerToken = useCallback(async () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showFileDbModal && (
+        <FileDatabaseModal
+          entries={fileDbEntries}
+          onUpdate={(updated) => setFileDbEntries(updated)}
+          onClose={() => setShowFileDbModal(false)}
+        />
       )}
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

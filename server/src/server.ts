@@ -7,7 +7,9 @@ dotenv.config();
 
 const { Pool } = pg;
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+}));
 app.use(express.json({ limit: "10mb" }));
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -19,17 +21,13 @@ const APTEAN_WEBHOOK_URL =
   process.env.APTEAN_WEBHOOK_URL ||
   "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
 
-const APTEAN_API_KEY =
-  process.env.APTEAN_API_KEY ||
-  "sk-15B4geGcWPAtU6Vh2YedAZnuGhnEiUipO74KAwLOGDE-C2E3O01PIHLI79OMT";
+const APTEAN_API_KEY = process.env.APTEAN_API_KEY || "";
 const APTEAN_COID = process.env.APTEAN_COID;
 
 const APTEAN_TOKEN_URL =
   "https://appcentral-int.aptean.com/iam/auth/realms/aptean/protocol/openid-connect/token";
-const APTEAN_TOKEN_CLIENT_ID =
-  process.env.APTEAN_CLIENT_ID || "PXK96UTIIQ7935FP1-SERVICE";
-const APTEAN_TOKEN_CLIENT_SECRET =
-  process.env.APTEAN_CLIENT_SECRET || "xdNBlj3EAecKALhoH8Af3sSwScOxpn7u";
+const APTEAN_TOKEN_CLIENT_ID = process.env.APTEAN_CLIENT_ID || "";
+const APTEAN_TOKEN_CLIENT_SECRET = process.env.APTEAN_CLIENT_SECRET || "";
 
 // ── Token state ───────────────────────────────────────────────────────────────
 let currentBearerToken: string = "";
@@ -81,9 +79,6 @@ async function refreshToken(): Promise<void> {
 
   console.log(
     `✅ Token refreshed — valid for ${data.expires_in}s (refresh in ${expiresIn}s)`
-  );
-  console.log(
-    `   Preview: ${currentBearerToken.slice(0, 20)}...${currentBearerToken.slice(-10)}`
   );
 }
 
@@ -279,29 +274,8 @@ app.get("/api/health", (_req: Request, res: Response) => {
     token: {
       hasToken: !!currentBearerToken,
       isExpired: Date.now() >= tokenExpiresAt,
-      expiresAt: tokenExpiresAt
-        ? new Date(tokenExpiresAt).toISOString()
-        : null,
       secondsRemaining: Math.max(0, Math.floor(msRemaining / 1000)),
-      preview: currentBearerToken
-        ? `${currentBearerToken.slice(0, 20)}...${currentBearerToken.slice(-10)}`
-        : "(none)",
     },
-    config: {
-      endpoint: APTEAN_ENDPOINT,
-      webhookUrl: APTEAN_WEBHOOK_URL,
-      coid: APTEAN_COID,
-      hasApiKey: !!APTEAN_API_KEY,
-    },
-    routes: [
-      "GET  /api/health",
-      "POST /api/token",
-      "POST /api/aptean/chat",
-      "POST /api/connect",
-      "POST /api/query",
-      "POST /api/webhook",
-      "POST /api/webhook/query",
-    ],
   });
 });
 
@@ -346,7 +320,7 @@ app.post("/api/aptean/chat", async (req: Request, res: Response) => {
     await ensureValidToken();
 
     console.log("→ input_value:", input_value.slice(0, 100));
-    console.log("→ token preview:", currentBearerToken.slice(0, 20) + "...");
+    console.log("→ has token:", !!currentBearerToken);
 
     const apteanRes = await fetch(APTEAN_ENDPOINT, {
       method: "POST",
@@ -447,21 +421,21 @@ app.post("/api/query", async (req: Request, res: Response) => {
 app.post("/api/webhook/query", async (req: Request, res: Response) => {
   console.log("\n=== POST /api/webhook/query ===");
 
-  const { input_value, webhook_url } = req.body;
+  const { input_value } = req.body;
 
   if (!input_value?.trim()) {
     res.status(400).json({ error: "No input_value provided" });
     return;
   }
 
-  const targetUrl = webhook_url || APTEAN_WEBHOOK_URL;
+  const targetUrl = APTEAN_WEBHOOK_URL;
 
   try {
     await ensureValidToken();
 
     console.log("→ URL:", targetUrl);
     console.log("→ input_value:", input_value.slice(0, 200));
-    console.log("→ token preview:", currentBearerToken.slice(0, 20) + "...");
+    console.log("→ has token:", !!currentBearerToken);
 
     const response = await fetch(targetUrl, {
       method: "POST",
@@ -572,7 +546,7 @@ app.post("/api/webhook", async (req: Request, res: Response) => {
     console.log("→ Aptean URL:", APTEAN_ENDPOINT);
     console.log("→ input_value length:", input_value.length);
     console.log("→ preview:", input_value.slice(0, 200));
-    console.log("→ token preview:", currentBearerToken.slice(0, 20) + "...");
+    console.log("→ has token:", !!currentBearerToken);
     console.log("→ header keys:", Object.keys(getApteanHeaders()));
 
     const response = await fetch(APTEAN_ENDPOINT, {

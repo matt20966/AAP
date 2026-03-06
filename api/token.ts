@@ -11,7 +11,6 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   console.log("ENV CHECK:", {
     hasClientId: !!clientId,
     hasClientSecret: !!clientSecret,
-    clientIdPreview: clientId.slice(0, 8),
   });
 
   if (!clientId || !clientSecret) {
@@ -70,7 +69,6 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     console.error("Token handler crash:", err);
     res.status(500).json({
       error: err instanceof Error ? err.message : "Unknown error",
-      stack: err instanceof Error ? err.stack?.slice(0, 500) : undefined,
     });
   }
 }

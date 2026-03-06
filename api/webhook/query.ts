@@ -13,14 +13,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const { input_value, webhook_url } = req.body;
+  const { input_value } = req.body;
 
   if (!input_value?.trim()) {
     res.status(400).json({ error: "No input_value provided" });
     return;
   }
 
-  const targetUrl = webhook_url || APTEAN_WEBHOOK_URL;
+  const targetUrl = APTEAN_WEBHOOK_URL;
 
   try {
     const token = await fetchFreshToken();
