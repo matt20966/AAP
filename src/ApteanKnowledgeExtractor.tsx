@@ -25,12 +25,9 @@ import {
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const API_BASE = "http://localhost:3001/api";
-
-const TOKEN_ENDPOINT = "https://appcentral-int.aptean.com/iam/auth/realms/aptean/protocol/openid-connect/token";
-const TOKEN_CLIENT_ID = "PXK96UTIIQ7935FP1-SERVICE";
-const TOKEN_CLIENT_SECRET = "xdNBlj3EAecKALhoH8Af3sSwScOxpn7u";
+const API_BASE = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : "/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -600,65 +597,43 @@ export default function ApteanKnowledgeExtractor() {
   useEffect(() => { loadPdfJs().then(() => setPdfReady(true)).catch((err) => console.warn('PDF.js preload failed:', err)); }, []);
   useEffect(() => { saveDocuments(documents); }, [documents]);
 
-  // ─── Reset Bearer Token ─────────────────────────────────────────────────
-
-  const handleResetBearerToken = useCallback(async () => {
-    setResettingToken(true);
-    try {
-      const body = new URLSearchParams();
-      body.append('client_id', TOKEN_CLIENT_ID);
-      body.append('client_secret', TOKEN_CLIENT_SECRET);
-      body.append('grant_type', 'client_credentials');
-
-      // Try via backend proxy first to avoid CORS
-      let response: Response;
-      try {
-        response = await fetch(`${API_BASE}/token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tokenUrl: TOKEN_ENDPOINT,
-            clientId: TOKEN_CLIENT_ID,
-            clientSecret: TOKEN_CLIENT_SECRET,
-          }),
-        });
-      } catch {
-        // Fallback: direct call (may fail due to CORS in browser)
-        response = await fetch(TOKEN_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: body.toString(),
-        });
-      }
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        throw new Error(`Token request failed (${response.status}): ${errText}`);
-      }
-
-      const data = await response.json();
-      const token = data.access_token;
-
-      if (!token) {
-        throw new Error('No access_token in response');
-      }
-
-      setBearerToken(token);
-      saveBearerToken(token);
-      addToast('Bearer token reset successfully', 'success');
-    } catch (err: any) {
-      console.error('Token reset failed:', err);
-      addToast(`Token reset failed: ${err.message || 'Unknown error'}`, 'error');
-    } finally {
-      setResettingToken(false);
-    }
-  }, []);
-
-  const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
     const id = generateId();
     setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
   }, []);
+
+  // ─── Reset Bearer Token ─────────────────────────────────────────────────
+const handleResetBearerToken = useCallback(async () => {
+  setResettingToken(true);
+  try {
+    const response = await fetch(`${API_BASE}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`Token request failed (${response.status}): ${errText}`);
+    }
+
+    const data = await response.json();
+    const token = data.access_token;
+
+    if (!token) throw new Error('No access_token in response');
+
+    setBearerToken(token);
+    saveBearerToken(token);
+    addToast('Bearer token reset successfully', 'success');
+  } catch (err: any) {
+    console.error('Token reset failed:', err);
+    addToast(`Token reset failed: ${err.message || 'Unknown error'}`, 'error');
+  } finally {
+    setResettingToken(false);
+  }
+}, [addToast]);
+
+  
 
   const dismissToast = useCallback((id: string) => { setToasts((prev) => prev.filter((t) => t.id !== id)); }, []);
 
