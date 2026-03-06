@@ -20,7 +20,9 @@ export async function fetchFreshToken(): Promise<string> {
   const rawText = await res.text();
 
   if (!res.ok) {
-    throw new Error(`Token fetch failed ${res.status}: ${rawText.slice(0, 300)}`);
+    throw new Error(
+      `Token fetch failed ${res.status}: ${rawText.slice(0, 300)}`
+    );
   }
 
   let data: any;
@@ -31,7 +33,9 @@ export async function fetchFreshToken(): Promise<string> {
   }
 
   if (!data.access_token) {
-    throw new Error(`No access_token in response: ${JSON.stringify(data).slice(0, 200)}`);
+    throw new Error(
+      `No access_token in response: ${JSON.stringify(data).slice(0, 200)}`
+    );
   }
 
   return data.access_token;

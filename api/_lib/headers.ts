@@ -1,38 +1,30 @@
-const APTEAN_TOKEN_URL =
-  "https://appcentral-int.aptean.com/iam/auth/realms/aptean/protocol/openid-connect/token";
+const APTEAN_API_KEY = process.env.APTEAN_API_KEY || "";
+const APTEAN_COID = process.env.APTEAN_COID || "";
 
-export async function fetchFreshToken(): Promise<string> {
-  const clientId = process.env.APTEAN_CLIENT_ID || "";
-  const clientSecret = process.env.APTEAN_CLIENT_SECRET || "";
+export function getApteanHeaders(token: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
 
-  const params = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    grant_type: "client_credentials",
-  });
-
-  const res = await fetch(APTEAN_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  });
-
-  const rawText = await res.text();
-
-  if (!res.ok) {
-    throw new Error(`Token fetch failed ${res.status}: ${rawText.slice(0, 300)}`);
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  if (APTEAN_API_KEY) {
+    headers["x-api-key"] = APTEAN_API_KEY;
+  }
+  if (APTEAN_COID) {
+    headers["X-APTEAN-COID"] = APTEAN_COID;
   }
 
-  let data: any;
-  try {
-    data = JSON.parse(rawText);
-  } catch {
-    throw new Error(`Token response not JSON: ${rawText.slice(0, 200)}`);
-  }
+  return headers;
+}
 
-  if (!data.access_token) {
-    throw new Error(`No access_token in response: ${JSON.stringify(data).slice(0, 200)}`);
-  }
-
-  return data.access_token;
+export function sanitizeSQL(raw: string): string {
+  return raw
+    .replace(/```[\w]*\n?/gi, "")
+    .replace(/`/g, "")
+    .replace(/\\n/g, " ")
+    .replace(/\n/g, " ")
+    .replace(/\r/g, "")
+    .trim();
 }
