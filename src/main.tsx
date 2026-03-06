@@ -1,8 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import App from './App'; // This imports your AuthApp component
-import './index.css';    // This ensures Tailwind CSS works
+import App from './DatabaseTools';
+import './index.css';
 
 const rootElement = document.getElementById('root');
 

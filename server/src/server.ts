@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import pg from "pg";
+import pg from "../node_modules/@types/pg";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -11,16 +11,12 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const APTEAN_ENDPOINT =
-  process.env.APTEAN_ENDPOINT ||
-  "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
+const APTEAN_ENDPOINT = process.env.APTEAN_ENDPOINT || "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
 
-const APTEAN_WEBHOOK_URL =
-  process.env.APTEAN_WEBHOOK_URL ||
-  "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
+const APTEAN_WEBHOOK_URL = process.env.APTEAN_WEBHOOK_URL || "https://appcentral-int.aptean.com/ais/api/v1/run/880716fe-3d8b-4f3b-963d-0fec2625814a?stream=false";
 
 const APTEAN_API_KEY  = process.env.APTEAN_API_KEY  || "sk-15B4geGcWPAtU6Vh2YedAZnuGhnEiUipO74KAwLOGDE-C2E3O01PIHLI79OMT";
-const APTEAN_COID     = process.env.APTEAN_COID     || "PXK96UTIIQ7935FP1";
+const APTEAN_COID     = process.env.APTEAN_COID;
 
 const APTEAN_TOKEN_URL           = "https://appcentral-int.aptean.com/iam/auth/realms/aptean/protocol/openid-connect/token";
 const APTEAN_TOKEN_CLIENT_ID     = process.env.APTEAN_CLIENT_ID     || "PXK96UTIIQ7935FP1-SERVICE";
@@ -608,18 +604,6 @@ app.post("/api/webhook", async (req, res) => {
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`\n🚀 Server running on http://localhost:${PORT}`);
-  console.log(`\n   Endpoints:`);
-  console.log(`   GET  /api/health`);
-  console.log(`   POST /api/token`);
-  console.log(`   POST /api/aptean/chat`);
-  console.log(`   POST /api/connect`);
-  console.log(`   POST /api/query`);
-  console.log(`   POST /api/webhook`);
-  console.log(`   POST /api/webhook/query`);
-  console.log(`\n   Config:`);
-  console.log(`   Aptean Endpoint : ${APTEAN_ENDPOINT}`);
-  console.log(`   Webhook URL     : ${APTEAN_WEBHOOK_URL}`);
-  console.log(`   COID            : ${APTEAN_COID}`);
   console.log(`   Has API Key     : ${!!APTEAN_API_KEY}`);
   console.log(`   Token URL       : ${APTEAN_TOKEN_URL}\n`);
 });
